@@ -1,8 +1,25 @@
 import { INITIAL_EPISODES, INITIAL_INTEL_ITEMS } from '../data/seedData';
-import { Episode, IntelItem, StageGate, StageId, STAGES } from '../types';
+import {
+  ApexScannerRawItem,
+  ChannelId,
+  CHANNELS,
+  Episode,
+  FullScript,
+  IntelItem,
+  MonthlyRevenueChannel,
+  RevenueLogEntry,
+  StageGate,
+  StageId,
+  STAGES,
+  ThumbnailVariant,
+  YouTubeChannelStats,
+} from '../types';
 
 const STORAGE_KEY_EPISODES = 'empire_command_episodes_v1';
 const STORAGE_KEY_INTEL = 'empire_command_intel_v1';
+const STORAGE_KEY_REVENUE = 'empire_command_revenue_v1';
+const STORAGE_KEY_REVENUE_LOGS = 'empire_command_revenue_logs_v1';
+const STORAGE_KEY_YT_KEY = 'empire_youtube_api_key';
 
 export function getMondayOfCurrentWeek(date = new Date()): Date {
   const d = new Date(date);
@@ -140,6 +157,14 @@ export async function moveEpisodeStage(
 
   // Check gate approval if moving FORWARD
   if (targetStageInfo.index > currentStageInfo.index) {
+    // Check if target is live: YouTube check is strictly mandatory!
+    if (targetStage === 'live' && !episode.publishChecklist?.youtube) {
+      return {
+        success: false,
+        error: 'Syndication Gate locked: YouTube primary release checklist item must be verified and checked off before moving episode to Live.',
+      };
+    }
+
     // Check if the current stage has a required gate
     if (currentStageInfo.requiresGate) {
       const currentGate = episode.gates[episode.stage];
@@ -178,6 +203,12 @@ export async function moveEpisodeStage(
   };
 
   await saveEpisode(updatedEpisode);
+
+  // If entering a gated stage, ping notification
+  if (targetStageInfo.requiresGate && !updatedGates[targetStage]?.isApproved) {
+    notifyApprovalNeeded(updatedEpisode.title, targetStageInfo.title);
+  }
+
   return { success: true, episode: updatedEpisode };
 }
 
@@ -383,4 +414,391 @@ export async function resetToDefaults(): Promise<{ episodes: Episode[]; intel: I
   localStorage.setItem(STORAGE_KEY_EPISODES, JSON.stringify(INITIAL_EPISODES));
   localStorage.setItem(STORAGE_KEY_INTEL, JSON.stringify(INITIAL_INTEL_ITEMS));
   return { episodes: INITIAL_EPISODES, intel: INITIAL_INTEL_ITEMS };
+}
+
+// ---------------------------------------------------------------------------
+// BROWSER NOTIFICATIONS
+// ---------------------------------------------------------------------------
+export function notifyApprovalNeeded(episodeTitle: string, stageTitle: string): void {
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+  if (Notification.permission === 'granted') {
+    try {
+      new Notification(`Approval needed: ${episodeTitle} (${stageTitle})`, {
+        body: `Action required at the ${stageTitle} gate. Open Empire Command Center to review.`,
+        icon: '/favicon.ico',
+      });
+    } catch (e) {
+      console.warn('Could not dispatch browser notification', e);
+    }
+  }
+}
+
+export async function requestNotificationPermission(): Promise<boolean> {
+  if (typeof window !== 'undefined' && 'Notification' in window) {
+    try {
+      const res = await Notification.requestPermission();
+      return res === 'granted';
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// SERVER-SIDE GEMINI API CLIENT CALLS
+// ---------------------------------------------------------------------------
+export async function generateDraftScript(
+  title: string,
+  channelId: string,
+  hookSummary?: string,
+  outline?: string
+): Promise<{
+  hook: string;
+  sections: { heading: string; content: string }[];
+  cta: string;
+  wordCount: number;
+  durationMinutes: number;
+  isSimulated?: boolean;
+}> {
+  const response = await fetch('/api/gemini/generate-script', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, channelId, hookSummary, outline }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to generate script (status ${response.status})`);
+  }
+
+  return response.json();
+}
+
+export async function summarizeScript(
+  scriptText: string,
+  title?: string
+): Promise<{
+  summary: string;
+  retentionBeats: string[];
+  estimatedPacing: string;
+  isSimulated?: boolean;
+}> {
+  const response = await fetch('/api/gemini/summarize-script', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scriptText, title }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to summarize script (status ${response.status})`);
+  }
+
+  return response.json();
+}
+
+export async function scoreThumbnailVariants(
+  title: string,
+  channelId: string,
+  variants: ThumbnailVariant[]
+): Promise<{ scores: { id: string; score: number; critique: string }[]; isSimulated?: boolean }> {
+  const response = await fetch('/api/gemini/score-thumbnails', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, channelId, variants }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to score thumbnails (status ${response.status})`);
+  }
+
+  return response.json();
+}
+
+// ---------------------------------------------------------------------------
+// YOUTUBE DATA API (LIVE)
+// ---------------------------------------------------------------------------
+export function getSavedYouTubeApiKey(): string {
+  if (typeof window === 'undefined') return '';
+  return localStorage.getItem(STORAGE_KEY_YT_KEY) || '';
+}
+
+export function saveYouTubeApiKey(key: string): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(STORAGE_KEY_YT_KEY, key.trim());
+}
+
+export async function fetchLiveYouTubeStats(
+  apiKey: string,
+  channelConfigs: { channelId: ChannelId; youtubeId: string; title: string }[]
+): Promise<YouTubeChannelStats[]> {
+  if (!apiKey) {
+    throw new Error('API key is missing');
+  }
+
+  const ids = channelConfigs.map((c) => c.youtubeId);
+  const response = await fetch('/api/youtube/stats', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ apiKey, channelIds: ids }),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || `YouTube API error (${response.status})`);
+  }
+
+  const data = await response.json();
+  const items = data.items || [];
+
+  return channelConfigs.map((config) => {
+    const item = items.find((it: any) => it.id === config.youtubeId);
+    if (!item) {
+      return {
+        channelId: config.channelId,
+        title: config.title,
+        channelYoutubeId: config.youtubeId,
+        subscribers: 0,
+        totalViews: 0,
+        videoCount: 0,
+        lastFetchedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+    }
+
+    const stats = item.statistics || {};
+    const snippet = item.snippet || {};
+
+    return {
+      channelId: config.channelId,
+      title: snippet.title || config.title,
+      channelYoutubeId: config.youtubeId,
+      subscribers: parseInt(stats.subscriberCount) || 0,
+      totalViews: parseInt(stats.viewCount) || 0,
+      videoCount: parseInt(stats.videoCount) || 0,
+      customUrl: snippet.customUrl,
+      thumbnailUrl: snippet.thumbnails?.medium?.url || snippet.thumbnails?.default?.url,
+      lastFetchedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// REVENUE VS MONTHLY TARGETS (MANUAL ENTRY & PROJECTIONS)
+// Targets: Little Olympus $50K, Iron Legends $35K, Empire Decoded $80K
+// ---------------------------------------------------------------------------
+export const DEFAULT_REVENUE_CHANNELS: MonthlyRevenueChannel[] = [
+  {
+    channelId: 'little_olympus',
+    name: 'Little Olympus',
+    monthlyTarget: 50000,
+    currentRevenue: 34200,
+    lastUpdated: new Date().toISOString(),
+  },
+  {
+    channelId: 'iron_legends',
+    name: 'Iron Legends',
+    monthlyTarget: 35000,
+    currentRevenue: 21850,
+    lastUpdated: new Date().toISOString(),
+  },
+  {
+    channelId: 'empire_decoded',
+    name: 'Empire Decoded',
+    monthlyTarget: 80000,
+    currentRevenue: 58600,
+    lastUpdated: new Date().toISOString(),
+  },
+];
+
+export function getRevenueChannels(): MonthlyRevenueChannel[] {
+  if (typeof window === 'undefined') return DEFAULT_REVENUE_CHANNELS;
+  const raw = localStorage.getItem(STORAGE_KEY_REVENUE);
+  if (!raw) {
+    localStorage.setItem(STORAGE_KEY_REVENUE, JSON.stringify(DEFAULT_REVENUE_CHANNELS));
+    return DEFAULT_REVENUE_CHANNELS;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return DEFAULT_REVENUE_CHANNELS;
+  }
+}
+
+export function saveRevenueChannels(channels: MonthlyRevenueChannel[]): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(STORAGE_KEY_REVENUE, JSON.stringify(channels));
+}
+
+export function updateChannelRevenue(
+  channelId: ChannelId,
+  currentRevenue: number
+): MonthlyRevenueChannel[] {
+  const current = getRevenueChannels();
+  const updated = current.map((c) =>
+    c.channelId === channelId
+      ? { ...c, currentRevenue: Math.max(0, currentRevenue), lastUpdated: new Date().toISOString() }
+      : c
+  );
+  saveRevenueChannels(updated);
+  return updated;
+}
+
+export function getRevenueLogs(): RevenueLogEntry[] {
+  if (typeof window === 'undefined') return [];
+  const raw = localStorage.getItem(STORAGE_KEY_REVENUE_LOGS);
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+export function addRevenueLog(
+  entry: Omit<RevenueLogEntry, 'id'>
+): { logs: RevenueLogEntry[]; channels: MonthlyRevenueChannel[] } {
+  const logs = getRevenueLogs();
+  const newEntry: RevenueLogEntry = {
+    ...entry,
+    id: `rev-${Date.now()}`,
+  };
+  const updatedLogs = [newEntry, ...logs];
+  localStorage.setItem(STORAGE_KEY_REVENUE_LOGS, JSON.stringify(updatedLogs));
+
+  // Also auto-add to channel current revenue
+  const currentChannels = getRevenueChannels();
+  const updatedChannels = currentChannels.map((c) =>
+    c.channelId === entry.channelId
+      ? { ...c, currentRevenue: c.currentRevenue + entry.amount, lastUpdated: new Date().toISOString() }
+      : c
+  );
+  saveRevenueChannels(updatedChannels);
+
+  return { logs: updatedLogs, channels: updatedChannels };
+}
+
+// ---------------------------------------------------------------------------
+// APEX SCANNER JSON IMPORT
+// Expected shape: [{ id?, title, source, timestamp?, channel, synopsis?, viralScore?, tags? }]
+// ---------------------------------------------------------------------------
+export function validateAndParseApexJson(
+  rawInput: string | any[]
+): { success: true; items: ApexScannerRawItem[] } | { success: false; error: string } {
+  let parsed: any;
+  if (typeof rawInput === 'string') {
+    try {
+      parsed = JSON.parse(rawInput.trim());
+    } catch (e: any) {
+      return { success: false, error: `Invalid JSON syntax: ${e.message}` };
+    }
+  } else {
+    parsed = rawInput;
+  }
+
+  if (!Array.isArray(parsed)) {
+    return {
+      success: false,
+      error: 'Root JSON must be an array of scanner objects (e.g. `[{ "title": "...", "source": "...", "channel": "..." }]`).',
+    };
+  }
+
+  if (parsed.length === 0) {
+    return { success: false, error: 'JSON array is empty. Please provide at least 1 scanner item.' };
+  }
+
+  const validChannels: Record<string, ChannelId> = {
+    little_olympus: 'little_olympus',
+    'little olympus': 'little_olympus',
+    iron_legends: 'iron_legends',
+    'iron legends': 'iron_legends',
+    empire_decoded: 'empire_decoded',
+    'empire decoded': 'empire_decoded',
+  };
+
+  const validated: ApexScannerRawItem[] = [];
+
+  for (let i = 0; i < parsed.length; i++) {
+    const item = parsed[i];
+    const itemNumber = i + 1;
+
+    if (!item || typeof item !== 'object') {
+      return { success: false, error: `Item #${itemNumber} is not a valid object.` };
+    }
+
+    if (!item.title || typeof item.title !== 'string' || !item.title.trim()) {
+      return {
+        success: false,
+        error: `Item #${itemNumber} is missing required field: "title" (string).`,
+      };
+    }
+
+    if (!item.source || typeof item.source !== 'string' || !item.source.trim()) {
+      return {
+        success: false,
+        error: `Item #${itemNumber} ("${item.title.slice(0, 30)}...") is missing required field: "source" (string).`,
+      };
+    }
+
+    if (!item.channel || typeof item.channel !== 'string') {
+      return {
+        success: false,
+        error: `Item #${itemNumber} ("${item.title.slice(0, 30)}...") is missing required field: "channel" ("little_olympus", "iron_legends", or "empire_decoded").`,
+      };
+    }
+
+    const normalizedChannel = validChannels[item.channel.toLowerCase().trim()];
+    if (!normalizedChannel) {
+      return {
+        success: false,
+        error: `Item #${itemNumber}: channel "${item.channel}" is not recognized. Must be "little_olympus", "iron_legends", or "empire_decoded".`,
+      };
+    }
+
+    validated.push({
+      id: item.id ? String(item.id) : undefined,
+      title: item.title.trim(),
+      source: item.source.trim(),
+      timestamp: item.timestamp || 'Just now (APEX import)',
+      channel: normalizedChannel,
+      synopsis: item.synopsis || 'Dossier imported from APEX automated market trend scanner.',
+      viralScore:
+        typeof item.viralScore === 'number'
+          ? Math.min(100, Math.max(50, Math.round(item.viralScore)))
+          : Math.floor(Math.random() * 12) + 88,
+      tags: Array.isArray(item.tags)
+        ? item.tags.map((t: any) => String(t).trim())
+        : ['APEX', 'Market Trend'],
+    });
+  }
+
+  return { success: true, items: validated };
+}
+
+export async function importApexScannerFeed(
+  rawInput: string | any[]
+): Promise<{ added: IntelItem[]; totalCount: number }> {
+  const result = validateAndParseApexJson(rawInput);
+  if (!result.success) {
+    throw new Error(result.error);
+  }
+
+  const existingIntel = await fetchIntelFeed();
+  const newIntelItems: IntelItem[] = result.items.map((raw, idx) => ({
+    id: raw.id || `apex-${Date.now()}-${idx}`,
+    title: raw.title,
+    source: raw.source,
+    timestamp: raw.timestamp || 'Just now',
+    channelTarget: raw.channel as ChannelId,
+    synopsis: raw.synopsis || 'Dossier imported from APEX automated market trend scanner.',
+    viralScore: raw.viralScore || 90,
+    tags: raw.tags || ['APEX', 'Algorithm'],
+    isUsed: false,
+  }));
+
+  const merged = [...newIntelItems, ...existingIntel];
+  saveIntelToStorage(merged);
+
+  return { added: newIntelItems, totalCount: merged.length };
 }

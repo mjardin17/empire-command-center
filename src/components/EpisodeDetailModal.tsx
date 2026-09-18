@@ -1,26 +1,50 @@
 import React, { useState } from 'react';
 import {
+  AlertCircle,
   AlertTriangle,
+  Award,
   Check,
   CheckCircle2,
   ChevronRight,
   Clock,
   ExternalLink,
+  Eye,
   Film,
   Flame,
   Image as ImageIcon,
+  Key,
+  Layers,
   Lock,
   MessageSquare,
   Play,
+  Plus,
+  RefreshCw,
   RotateCcw,
   Save,
   Share2,
   Sparkles,
+  Star,
   Trash2,
   UploadCloud,
   X,
+  Zap,
 } from 'lucide-react';
-import { ChannelId, CHANNELS, Episode, PublishChecklist, StageId, STAGES } from '../types';
+import {
+  formatTimestamp,
+  generateDraftScript,
+  scoreThumbnailVariants,
+  summarizeScript,
+} from '../services/api';
+import {
+  ChannelId,
+  CHANNELS,
+  Episode,
+  FullScript,
+  PublishChecklist,
+  StageId,
+  STAGES,
+  ThumbnailVariant,
+} from '../types';
 
 interface EpisodeDetailModalProps {
   episode: Episode;
@@ -41,12 +65,68 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
   onMoveStage,
   onDelete,
 }) => {
-  const [formData, setFormData] = useState<Episode>({ ...episode });
-  const [activeTab, setActiveTab] = useState<'overview' | 'script' | 'thumbnail' | 'render' | 'publish'>('overview');
+  // Determine initial active tab based on stage context
+  const getInitialTab = (): 'overview' | 'script' | 'thumbnail' | 'render' | 'publish' => {
+    if (episode.stage === 'script') return 'script';
+    if (episode.stage === 'thumbnail') return 'thumbnail';
+    if (episode.stage === 'publish') return 'publish';
+    if (episode.stage === 'render') return 'render';
+    return 'overview';
+  };
+
+  const [formData, setFormData] = useState<Episode>(() => ({
+    ...episode,
+    fullScript: episode.fullScript || {
+      hook:
+        episode.scriptStatus?.hookSummary ||
+        'In the golden age of ancient myth and machines, one discovery changed everything.',
+      sections: [
+        {
+          heading: 'Act 1: The Inciting Catalyst',
+          content:
+            '[Visual cue: Rapid dynamic montage with sound design]\nDeep in the forgotten archives, ancient engineering scrolls revealed blueprints for mechanical titans.',
+        },
+        {
+          heading: 'Act 2: The Tactical Showdown',
+          content:
+            '[Visual cue: 3D schematic breakdown with kinetic typography]\nWhen the opposing legions met at the riverbed, the sheer scale of the defense wall stunned the commanders.',
+        },
+        {
+          heading: 'Act 3: The Aftermath & Paradigm Shift',
+          content:
+            '[Visual cue: Cinematic drone sweep across the battlefield ruins]\nModern archaeologists are only now beginning to grasp the astronomical precision embedded in these ancient ruins.',
+        },
+      ],
+      cta: 'Subscribe to Empire Decoded for weekly deep-dives into ancient tactical engineering.',
+      lastDraftedAt: formatTimestamp(),
+    },
+  }));
+
+  const [activeTab, setActiveTab] = useState<'overview' | 'script' | 'thumbnail' | 'render' | 'publish'>(
+    getInitialTab
+  );
+
   const [revisionNoteInput, setRevisionNoteInput] = useState(
     episode.gates[episode.stage]?.notes || ''
   );
   const [showRevisionForm, setShowRevisionForm] = useState(false);
+
+  // Gemini loading states
+  const [isGeneratingScript, setIsGeneratingScript] = useState(false);
+  const [isSummarizingScript, setIsSummarizingScript] = useState(false);
+  const [isScoringThumbnails, setIsScoringThumbnails] = useState(false);
+  const [scriptSummaryResult, setScriptSummaryResult] = useState<{
+    summary: string;
+    retentionBeats: string[];
+    estimatedPacing: string;
+  } | null>(null);
+
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
 
   const currentStageInfo = STAGES.find((s) => s.id === formData.stage);
   const currentGate = formData.gates[formData.stage];
@@ -58,44 +138,240 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
 
   // Publish checklist count
   const checklistKeys: (keyof PublishChecklist)[] = ['youtube', 'instagram', 'facebook', 'x', 'linkedin'];
-  const completedChecklistCount = checklistKeys.filter((k) => formData.publishChecklist[k]).length;
+  const completedChecklistCount = checklistKeys.filter((k) => formData.publishChecklist?.[k]).length;
 
   const handleTextChange = (field: keyof Episode, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleScriptChange = (field: string, value: any) => {
+  // Full Script handlers
+  const handleHookChange = (val: string) => {
     setFormData((prev) => ({
       ...prev,
-      scriptStatus: {
-        ...prev.scriptStatus,
-        [field]: value,
+      fullScript: {
+        ...(prev.fullScript || { sections: [], cta: '' }),
+        hook: val,
       },
     }));
   };
 
-  const handleToggleChecklist = (platform: keyof PublishChecklist) => {
-    const updatedChecklist = {
-      ...formData.publishChecklist,
-      [platform]: !formData.publishChecklist[platform],
-    };
-    const updated = {
-      ...formData,
-      publishChecklist: updatedChecklist,
-    };
-    setFormData(updated);
-    onSave(updated);
+  const handleCtaChange = (val: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      fullScript: {
+        ...(prev.fullScript || { hook: '', sections: [] }),
+        cta: val,
+      },
+    }));
   };
 
-  const handleSelectThumbnailVariant = (variantId: string) => {
+  const handleSectionHeadingChange = (index: number, heading: string) => {
+    setFormData((prev) => {
+      const currentSections = [...(prev.fullScript?.sections || [])];
+      if (currentSections[index]) {
+        currentSections[index] = { ...currentSections[index], heading };
+      }
+      return {
+        ...prev,
+        fullScript: {
+          ...(prev.fullScript || { hook: '', cta: '' }),
+          sections: currentSections,
+        },
+      };
+    });
+  };
+
+  const handleSectionContentChange = (index: number, content: string) => {
+    setFormData((prev) => {
+      const currentSections = [...(prev.fullScript?.sections || [])];
+      if (currentSections[index]) {
+        currentSections[index] = { ...currentSections[index], content };
+      }
+      return {
+        ...prev,
+        fullScript: {
+          ...(prev.fullScript || { hook: '', cta: '' }),
+          sections: currentSections,
+        },
+      };
+    });
+  };
+
+  const handleAddSection = () => {
+    setFormData((prev) => {
+      const currentSections = [...(prev.fullScript?.sections || [])];
+      currentSections.push({
+        heading: `Act ${currentSections.length + 1}: Key Narrative Beat`,
+        content: '[Visual cue: Narrative cut with archival B-Roll]\nEnter narrative script text here...',
+      });
+      return {
+        ...prev,
+        fullScript: {
+          ...(prev.fullScript || { hook: '', cta: '' }),
+          sections: currentSections,
+        },
+      };
+    });
+  };
+
+  const handleRemoveSection = (idx: number) => {
+    setFormData((prev) => {
+      const currentSections = [...(prev.fullScript?.sections || [])].filter((_, i) => i !== idx);
+      return {
+        ...prev,
+        fullScript: {
+          ...(prev.fullScript || { hook: '', cta: '' }),
+          sections: currentSections,
+        },
+      };
+    });
+  };
+
+  // Gemini: Generate Draft Script
+  const handleGenerateDraftScript = async () => {
+    setIsGeneratingScript(true);
+    try {
+      const result = await generateDraftScript(
+        formData.title,
+        formData.channelId,
+        formData.fullScript?.hook || formData.scriptStatus?.hookSummary,
+        formData.scriptStatus?.outline
+      );
+
+      const updatedScript: FullScript = {
+        hook: result.hook,
+        sections: result.sections,
+        cta: result.cta,
+        lastDraftedAt: formatTimestamp(),
+      };
+
+      const updated = {
+        ...formData,
+        fullScript: updatedScript,
+        scriptStatus: {
+          ...formData.scriptStatus,
+          wordCount: result.wordCount,
+          durationMinutes: result.durationMinutes,
+          hookSummary: result.hook.slice(0, 140) + '...',
+          scriptReviewState: 'Drafting' as const,
+        },
+      };
+
+      setFormData(updated);
+      onSave(updated);
+      showToast('Draft script generated successfully with Gemini!');
+    } catch (err: any) {
+      alert(`Script Generation Error: ${err.message}`);
+    } finally {
+      setIsGeneratingScript(false);
+    }
+  };
+
+  // Gemini: Summarize Script
+  const handleSummarizeScript = async () => {
+    setIsSummarizingScript(true);
+    try {
+      const scriptParts = [
+        `HOOK: ${formData.fullScript?.hook || ''}`,
+        ...(formData.fullScript?.sections || []).map(
+          (s) => `[${s.heading}]\n${s.content}`
+        ),
+        `CTA: ${formData.fullScript?.cta || ''}`,
+      ].join('\n\n');
+
+      const result = await summarizeScript(scriptParts, formData.title);
+      setScriptSummaryResult(result);
+      showToast('Executive script summary ready!');
+    } catch (err: any) {
+      alert(`Summarization Error: ${err.message}`);
+    } finally {
+      setIsSummarizingScript(false);
+    }
+  };
+
+  // Thumbnail: Score Variants with Gemini (1-10)
+  const handleScoreThumbnailVariants = async () => {
+    setIsScoringThumbnails(true);
+    try {
+      const result = await scoreThumbnailVariants(
+        formData.title,
+        formData.channelId,
+        formData.thumbnailVariants
+      );
+
+      const updatedVariants = formData.thumbnailVariants.map((v) => {
+        const found = result.scores.find((s) => s.id === v.id);
+        if (found) {
+          return {
+            ...v,
+            clickAppealScore: found.score,
+            clickAppealCritique: found.critique,
+          };
+        }
+        return v;
+      });
+
+      const updated = {
+        ...formData,
+        thumbnailVariants: updatedVariants,
+      };
+
+      setFormData(updated);
+      onSave(updated);
+      showToast('Thumbnail variants scored 1–10 with Gemini!');
+    } catch (err: any) {
+      alert(`Scoring Error: ${err.message}`);
+    } finally {
+      setIsScoringThumbnails(false);
+    }
+  };
+
+  // Thumbnail: Pick Winner
+  const handlePickWinner = (variantId: string) => {
+    const timestamp = formatTimestamp();
     const updatedVariants = formData.thumbnailVariants.map((v) => ({
       ...v,
       isSelected: v.id === variantId,
+      selectedAt: v.id === variantId ? timestamp : undefined,
     }));
+
     const updated = {
       ...formData,
       thumbnailVariants: updatedVariants,
     };
+
+    setFormData(updated);
+    onSave(updated);
+    showToast(`Winner selected (${timestamp})!`);
+  };
+
+  // Publish Checklist toggle
+  const handleToggleChecklist = (platform: keyof PublishChecklist) => {
+    const isNowChecked = !formData.publishChecklist?.[platform];
+    const timestamp = isNowChecked ? formatTimestamp() : undefined;
+
+    const updatedChecklist = {
+      ...(formData.publishChecklist || {
+        youtube: false,
+        instagram: false,
+        facebook: false,
+        x: false,
+        linkedin: false,
+      }),
+      [platform]: isNowChecked,
+    };
+
+    const updatedTimestamps = {
+      ...(formData.publishChecklistTimestamps || {}),
+      [platform]: timestamp,
+    };
+
+    const updated = {
+      ...formData,
+      publishChecklist: updatedChecklist,
+      publishChecklistTimestamps: updatedTimestamps,
+    };
+
     setFormData(updated);
     onSave(updated);
   };
@@ -104,7 +380,12 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
     const updatedRender = {
       ...formData.renderStatus,
       progress,
-      status: progress >= 100 ? ('Completed' as const) : progress > 0 ? ('Rendering' as const) : ('Idle' as const),
+      status:
+        progress >= 100
+          ? ('Completed' as const)
+          : progress > 0
+          ? ('Rendering' as const)
+          : ('Idle' as const),
     };
     const updated = {
       ...formData,
@@ -126,11 +407,28 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
       [formData.stage]: {
         ...formData.gates[formData.stage],
         isApproved: true,
-        approvedAt: 'Just now',
+        approvedAt: formatTimestamp(),
         approvedBy: 'Command Lead',
       },
     };
-    setFormData((prev) => ({ ...prev, gates: updatedGates }));
+
+    let updatedScriptStatus = formData.scriptStatus;
+    if (formData.stage === 'script') {
+      updatedScriptStatus = {
+        ...formData.scriptStatus,
+        scriptReviewState: 'Approved',
+      };
+    }
+
+    const updated: Episode = {
+      ...formData,
+      gates: updatedGates,
+      scriptStatus: updatedScriptStatus,
+    };
+
+    setFormData(updated);
+    onSave(updated);
+    showToast(`${currentStageInfo?.title || 'Stage'} gate approved!`);
   };
 
   const handleSubmitRevisions = () => {
@@ -143,22 +441,47 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
         notes: revisionNoteInput,
       },
     };
-    setFormData((prev) => ({ ...prev, gates: updatedGates }));
+
+    let updatedScriptStatus = formData.scriptStatus;
+    if (formData.stage === 'script') {
+      updatedScriptStatus = {
+        ...formData.scriptStatus,
+        scriptReviewState: 'Needs Revisions',
+      };
+    }
+
+    const updated: Episode = {
+      ...formData,
+      gates: updatedGates,
+      scriptStatus: updatedScriptStatus,
+    };
+
+    setFormData(updated);
+    onSave(updated);
     setShowRevisionForm(false);
+    showToast('Change request recorded with revision notes.');
   };
 
   return (
     <div
       id="episode-detail-modal"
-      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/80 backdrop-blur-sm overflow-y-auto animate-fadeIn"
+      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/85 backdrop-blur-sm overflow-y-auto animate-fadeIn"
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-4xl bg-zinc-900 border border-zinc-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+        className="relative w-full max-w-4xl bg-zinc-900 border border-zinc-700/80 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh]"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* TOAST FEEDBACK NOTIFICATION */}
+        {toastMessage && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl bg-amber-500 text-zinc-950 font-bold text-xs shadow-xl flex items-center gap-2 border border-amber-400 animate-bounce">
+            <CheckCircle2 className="w-4 h-4" />
+            <span>{toastMessage}</span>
+          </div>
+        )}
+
         {/* TOP HEADER */}
-        <div className="p-4 sm:p-5 bg-zinc-950/80 border-b border-zinc-800 flex items-start justify-between gap-4">
+        <div className="p-4 sm:p-5 bg-zinc-950/90 border-b border-zinc-800 flex items-start justify-between gap-4">
           <div className="space-y-2 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               {/* Channel Selector */}
@@ -181,7 +504,7 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
 
               {isGated && (
                 <span
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold border ${
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold border ${
                     isGateApproved
                       ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
                       : 'bg-amber-500/20 text-amber-400 border-amber-500/30'
@@ -190,12 +513,12 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
                   {isGateApproved ? (
                     <>
                       <CheckCircle2 className="w-3.5 h-3.5" />
-                      Approved
+                      <span>Approved {currentGate?.approvedAt && `(${currentGate.approvedAt})`}</span>
                     </>
                   ) : (
                     <>
                       <Lock className="w-3.5 h-3.5" />
-                      Approval Required
+                      <span>Approval Gate Locked</span>
                     </>
                   )}
                 </span>
@@ -212,7 +535,6 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
             />
           </div>
 
-          {/* Close button with min 44px touch area */}
           <button
             type="button"
             onClick={onClose}
@@ -223,7 +545,7 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
           </button>
         </div>
 
-        {/* STAGE STEPPER PIPELINE BAR */}
+        {/* STAGE STEPPER BAR */}
         <div className="bg-zinc-950/40 border-b border-zinc-800 px-4 py-2.5 overflow-x-auto scrollbar-none">
           <div className="flex items-center gap-1 sm:gap-2 min-w-[620px]">
             {STAGES.map((s, idx) => {
@@ -267,7 +589,7 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
           </div>
         </div>
 
-        {/* APPROVAL GATE BANNER (IF CURRENT STAGE REQUIRES GATE) */}
+        {/* APPROVAL GATE BANNER */}
         {isGated && (
           <div
             className={`px-4 sm:px-6 py-3 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
@@ -286,7 +608,7 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
                 <span className="font-bold text-sm">
                   {isGateApproved
                     ? `${currentStageInfo?.title || 'Stage'} Gate Approved`
-                    : `${currentStageInfo?.title || 'Stage'} Approval Gate Required`}
+                    : `${currentStageInfo?.title || 'Stage'} Gate: Approval Required`}
                 </span>
                 {currentGate?.approvedAt && (
                   <span className="text-xs text-emerald-400/80 font-mono">
@@ -296,8 +618,8 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
               </div>
               <p className="text-xs text-zinc-300">
                 {isGateApproved
-                  ? 'Criteria validated. This episode is authorized to advance.'
-                  : 'Quality checkpoint: approve criteria or request specific changes before advancing.'}
+                  ? 'Criteria validated. This episode is authorized to advance to subsequent stages.'
+                  : 'Quality checkpoint: review and approve content or request specific revisions.'}
               </p>
             </div>
 
@@ -315,7 +637,7 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowRevisionForm(!showRevisionForm)}
-                    className="min-h-[44px] px-3 py-2 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-amber-300 border border-amber-500/30 active:scale-95 transition-all cursor-pointer"
+                    className="min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-amber-300 border border-amber-500/30 active:scale-95 transition-all cursor-pointer"
                   >
                     <RotateCcw className="w-4 h-4" />
                     Request Changes
@@ -334,7 +656,7 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
           </div>
         )}
 
-        {/* Revision form dropdown if toggled */}
+        {/* Revision form dropdown */}
         {showRevisionForm && (
           <div className="p-4 bg-zinc-950 border-b border-zinc-800 space-y-2">
             <label className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
@@ -367,7 +689,7 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
           </div>
         )}
 
-        {/* NAVIGATION TABS (Overview, Script, Thumbnail, Render, Publish) */}
+        {/* NAVIGATION TABS */}
         <div className="flex items-center gap-2 px-4 pt-3 border-b border-zinc-800 bg-zinc-900/50 overflow-x-auto scrollbar-none">
           <button
             type="button"
@@ -383,24 +705,30 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('script')}
-            className={`min-h-[44px] px-4 py-2 border-b-2 text-xs sm:text-sm font-semibold whitespace-nowrap transition-colors cursor-pointer ${
+            className={`min-h-[44px] px-4 py-2 border-b-2 text-xs sm:text-sm font-semibold whitespace-nowrap transition-colors cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'script'
                 ? 'border-amber-400 text-amber-300'
                 : 'border-transparent text-zinc-400 hover:text-zinc-200'
             }`}
           >
-            Script Status
+            <span>Full Script Viewer</span>
+            {formData.stage === 'script' && (
+              <span className="w-2 h-2 rounded-full bg-amber-400" />
+            )}
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('thumbnail')}
-            className={`min-h-[44px] px-4 py-2 border-b-2 text-xs sm:text-sm font-semibold whitespace-nowrap transition-colors cursor-pointer ${
+            className={`min-h-[44px] px-4 py-2 border-b-2 text-xs sm:text-sm font-semibold whitespace-nowrap transition-colors cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'thumbnail'
                 ? 'border-amber-400 text-amber-300'
                 : 'border-transparent text-zinc-400 hover:text-zinc-200'
             }`}
           >
-            Thumbnails ({formData.thumbnailVariants.length})
+            <span>Thumbnails ({formData.thumbnailVariants.length})</span>
+            {formData.stage === 'thumbnail' && (
+              <span className="w-2 h-2 rounded-full bg-amber-400" />
+            )}
           </button>
           <button
             type="button"
@@ -416,13 +744,16 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('publish')}
-            className={`min-h-[44px] px-4 py-2 border-b-2 text-xs sm:text-sm font-semibold whitespace-nowrap transition-colors cursor-pointer ${
+            className={`min-h-[44px] px-4 py-2 border-b-2 text-xs sm:text-sm font-semibold whitespace-nowrap transition-colors cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'publish'
                 ? 'border-amber-400 text-amber-300'
                 : 'border-transparent text-zinc-400 hover:text-zinc-200'
             }`}
           >
-            Publish Checklist ({completedChecklistCount}/5)
+            <span>Publish Checklist ({completedChecklistCount}/5)</span>
+            {formData.stage === 'publish' && (
+              <span className="w-2 h-2 rounded-full bg-amber-400" />
+            )}
           </button>
         </div>
 
@@ -431,7 +762,6 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
           {/* TAB 1: OVERVIEW */}
           {activeTab === 'overview' && (
             <div className="space-y-6">
-              {/* Quick Summary Grid */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="bg-zinc-950/60 p-3.5 rounded-xl border border-zinc-800">
                   <span className="text-[11px] text-zinc-400 font-medium block">Word Count</span>
@@ -449,189 +779,399 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
                     {formData.thumbnailVariants.find((v) => v.isSelected)?.label.slice(0, 18) ||
                       'None'}
                   </span>
-                  <span className="text-[10px] text-zinc-500 block">
-                    CTR: {formData.thumbnailVariants.find((v) => v.isSelected)?.predictedCtr || 'N/A'}
+                  <span className="text-[10px] text-zinc-500 block mt-0.5">
+                    CTR: {formData.thumbnailVariants.find((v) => v.isSelected)?.predictedCtr}
                   </span>
                 </div>
 
                 <div className="bg-zinc-950/60 p-3.5 rounded-xl border border-zinc-800">
-                  <span className="text-[11px] text-zinc-400 font-medium block">Render Status</span>
+                  <span className="text-[11px] text-zinc-400 font-medium block">Render Progress</span>
                   <span className="text-xl font-bold font-mono text-cyan-400">
                     {formData.renderStatus.progress}%
                   </span>
                   <span className="text-[10px] text-zinc-500 block mt-0.5">
-                    {formData.renderStatus.resolution}
+                    {formData.renderStatus.status}
                   </span>
                 </div>
 
                 <div className="bg-zinc-950/60 p-3.5 rounded-xl border border-zinc-800">
-                  <span className="text-[11px] text-zinc-400 font-medium block">Multi-Platform</span>
+                  <span className="text-[11px] text-zinc-400 font-medium block">Release Ready</span>
                   <span className="text-xl font-bold font-mono text-emerald-400">
-                    {completedChecklistCount} / 5
+                    {completedChecklistCount}/5
                   </span>
-                  <span className="text-[10px] text-zinc-500 block mt-0.5">Channels ready</span>
+                  <span className="text-[10px] text-zinc-500 block mt-0.5">
+                    {formData.publishChecklist?.youtube ? 'YouTube Checked' : 'YouTube Pending'}
+                  </span>
                 </div>
               </div>
 
-              {/* Hook & Synopsis */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">
-                  Opening Hook / Synopsis
-                </label>
-                <textarea
-                  rows={3}
-                  value={formData.scriptStatus.hookSummary}
-                  onChange={(e) => handleScriptChange('hookSummary', e.target.value)}
-                  className="w-full p-3 rounded-xl bg-zinc-950/70 border border-zinc-800 text-zinc-200 text-sm focus:outline-none focus:border-amber-400 leading-relaxed"
-                />
-              </div>
-
-              {/* Research Intel Attribution if present */}
+              {/* Source Dossier Information */}
               {formData.sourceIntelTitle && (
-                <div className="p-3.5 rounded-xl bg-zinc-950/80 border border-zinc-800/80 flex items-start gap-3">
-                  <Sparkles className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-                  <div className="space-y-0.5 text-xs">
-                    <span className="font-semibold text-zinc-300">Generated from Research Intel:</span>
-                    <p className="text-zinc-400">{formData.sourceIntelTitle}</p>
-                    <span className="text-[11px] text-zinc-500 font-mono">
-                      Source: {formData.sourceIntelName}
-                    </span>
-                  </div>
+                <div className="p-4 rounded-xl bg-amber-950/20 border border-amber-500/20 space-y-1">
+                  <span className="text-[10px] uppercase font-mono font-bold text-amber-400">
+                    Sourced From Intel Feed
+                  </span>
+                  <h4 className="text-sm font-bold text-zinc-200">{formData.sourceIntelTitle}</h4>
+                  <p className="text-xs text-zinc-400">Source: {formData.sourceIntelName}</p>
                 </div>
               )}
             </div>
           )}
 
-          {/* TAB 2: SCRIPT STATUS */}
+          {/* TAB 2: FULL SCRIPT VIEWER IN THE GATE */}
           {activeTab === 'script' && (
-            <div className="space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-xl bg-zinc-950/60 border border-zinc-800">
-                <div>
-                  <span className="text-xs text-zinc-400 font-medium">Review Status</span>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+            <div className="space-y-6">
+              {/* Script Header Toolbar: Gemini Actions + Metrics */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-zinc-950/80 border border-zinc-800">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-zinc-100">Full Production Script</h3>
+                    <span className="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
                       {formData.scriptStatus.scriptReviewState}
                     </span>
-                    <span className="text-xs text-zinc-400">
-                      Target length: ~{formData.scriptStatus.durationMinutes} mins
-                    </span>
                   </div>
+                  <p className="text-xs text-zinc-400">
+                    ~{formData.scriptStatus.wordCount} words • ~{formData.scriptStatus.durationMinutes} mins target runtime
+                  </p>
                 </div>
 
-                <div className="flex items-center gap-4">
-                  <div>
-                    <label className="text-xs text-zinc-400 block">Word Count</label>
-                    <input
-                      type="number"
-                      value={formData.scriptStatus.wordCount}
-                      onChange={(e) => handleScriptChange('wordCount', parseInt(e.target.value) || 0)}
-                      className="w-28 p-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-100 font-mono text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-zinc-400 block">Target Minutes</label>
-                    <input
-                      type="number"
-                      value={formData.scriptStatus.durationMinutes}
-                      onChange={(e) => handleScriptChange('durationMinutes', parseInt(e.target.value) || 0)}
-                      className="w-24 p-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-100 font-mono text-sm"
-                    />
-                  </div>
+                {/* Gemini AI Action Buttons */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleGenerateDraftScript}
+                    disabled={isGeneratingScript}
+                    className="min-h-[40px] px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-zinc-950 flex items-center gap-1.5 shadow-md shadow-amber-500/20 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <Sparkles className={`w-3.5 h-3.5 ${isGeneratingScript ? 'animate-spin' : ''}`} />
+                    <span>{isGeneratingScript ? 'Generating Draft...' : 'Generate Draft Script (Gemini)'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSummarizeScript}
+                    disabled={isSummarizingScript}
+                    className="min-h-[40px] px-3 py-2 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <Layers className="w-3.5 h-3.5 text-amber-400" />
+                    <span>{isSummarizingScript ? 'Summarizing...' : 'Summarize with Gemini'}</span>
+                  </button>
                 </div>
               </div>
 
-              {/* Story Arc Outline */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">
-                  Story Arc / Production Script Outline
+              {/* Summary Card if generated */}
+              {scriptSummaryResult && (
+                <div className="p-4 rounded-2xl bg-amber-950/30 border border-amber-500/40 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-amber-400" />
+                      Gemini Executive Script Synthesis
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setScriptSummaryResult(null)}
+                      className="text-zinc-400 hover:text-zinc-200 text-xs"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+
+                  <p className="text-xs text-zinc-200 leading-relaxed font-sans">
+                    {scriptSummaryResult.summary}
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 text-xs border-t border-amber-500/20">
+                    <div>
+                      <span className="text-[11px] font-bold text-amber-400 block mb-1">
+                        High-Retention Beats:
+                      </span>
+                      <ul className="list-disc pl-4 space-y-0.5 text-zinc-300 text-[11px]">
+                        {scriptSummaryResult.retentionBeats.map((b, idx) => (
+                          <li key={idx}>{b}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div>
+                      <span className="text-[11px] font-bold text-amber-400 block mb-1">
+                        Pacing Analysis:
+                      </span>
+                      <p className="text-zinc-300 text-[11px] leading-relaxed">
+                        {scriptSummaryResult.estimatedPacing}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Script Section: Hook */}
+              <div className="space-y-2 p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                    <Zap className="w-3.5 h-3.5" />
+                    Opening Hook (0:00 – 0:45)
+                  </label>
+                  <span className="text-[10px] text-zinc-500 font-mono">Crucial for 30s Retention</span>
+                </div>
+                <textarea
+                  rows={3}
+                  value={formData.fullScript?.hook || ''}
+                  onChange={(e) => handleHookChange(e.target.value)}
+                  placeholder="Opening hook lines with auditory cue and narrative anchor..."
+                  className="w-full p-3 rounded-xl bg-zinc-900 border border-zinc-700/80 text-zinc-100 text-xs font-mono focus:outline-none focus:border-amber-400 leading-relaxed resize-y"
+                />
+              </div>
+
+              {/* Script Sections: Acts / Scenes */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-300">
+                    Script Narrative Sections & Cues
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleAddSection}
+                    className="min-h-[36px] px-3 py-1.5 rounded-lg text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Scene Beat</span>
+                  </button>
+                </div>
+
+                {(formData.fullScript?.sections || []).map((sec, idx) => (
+                  <div
+                    key={idx}
+                    className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800 space-y-2.5"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <input
+                        type="text"
+                        value={sec.heading}
+                        onChange={(e) => handleSectionHeadingChange(idx, e.target.value)}
+                        className="flex-1 font-bold text-xs text-amber-300 bg-transparent border-b border-zinc-700 focus:border-amber-400 focus:outline-none py-1"
+                      />
+                      {(formData.fullScript?.sections?.length || 0) > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveSection(idx)}
+                          className="p-1 rounded text-zinc-500 hover:text-rose-400 transition-colors"
+                          title="Remove section"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    <textarea
+                      rows={4}
+                      value={sec.content}
+                      onChange={(e) => handleSectionContentChange(idx, e.target.value)}
+                      placeholder="Script dialogue, narration, and [visual cues]..."
+                      className="w-full p-3 rounded-xl bg-zinc-900 border border-zinc-700/80 text-zinc-200 text-xs font-mono focus:outline-none focus:border-amber-400 leading-relaxed resize-y"
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {/* Script Section: Call To Action (CTA) */}
+              <div className="space-y-2 p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800">
+                <label className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                  <Play className="w-3.5 h-3.5" />
+                  Outro & Call to Action (CTA)
                 </label>
                 <textarea
-                  rows={8}
-                  value={formData.scriptStatus.outline}
-                  onChange={(e) => handleScriptChange('outline', e.target.value)}
-                  className="w-full p-3.5 rounded-xl bg-zinc-950/70 border border-zinc-800 text-zinc-200 text-xs font-mono focus:outline-none focus:border-amber-400 leading-relaxed"
+                  rows={2}
+                  value={formData.fullScript?.cta || ''}
+                  onChange={(e) => handleCtaChange(e.target.value)}
+                  placeholder="Closing sign-off, comment question, and next episode card..."
+                  className="w-full p-3 rounded-xl bg-zinc-900 border border-zinc-700/80 text-zinc-100 text-xs font-mono focus:outline-none focus:border-amber-400 leading-relaxed resize-y"
                 />
+              </div>
+
+              {/* Script Gate Action Bar */}
+              <div className="p-4 rounded-2xl bg-zinc-950 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <span className="text-xs font-bold text-zinc-200 block">
+                    Script Gate Verification
+                  </span>
+                  <p className="text-[11px] text-zinc-400">
+                    Approve full script text or request revisions before storyboard/thumbnail handoff
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowRevisionForm(true)}
+                    className="min-h-[40px] px-3.5 py-2 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-amber-300 border border-zinc-700 transition-colors cursor-pointer"
+                  >
+                    Request Script Changes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDirectApprove}
+                    className="min-h-[40px] px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>Approve Script Gate</span>
+                  </button>
+                </div>
               </div>
             </div>
           )}
 
-          {/* TAB 3: THUMBNAIL VARIANT PLACEHOLDERS */}
+          {/* TAB 3: THUMBNAIL APPROVAL (SIDE-BY-SIDE + GEMINI SCORING + WINNER) */}
           {activeTab === 'thumbnail' && (
-            <div className="space-y-5">
-              <div className="flex items-center justify-between">
+            <div className="space-y-6">
+              {/* Header with Gemini Score action */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-zinc-950/80 border border-zinc-800">
                 <div>
-                  <h3 className="text-sm font-bold text-zinc-100">A/B/C Thumbnail Variants</h3>
+                  <h3 className="text-sm font-bold text-zinc-100 flex items-center gap-2">
+                    <ImageIcon className="w-4 h-4 text-amber-400" />
+                    A/B/C Thumbnail Variants Comparison
+                  </h3>
                   <p className="text-xs text-zinc-400">
-                    Compare contrast, click-through predictions and set active hero
+                    Pick a winner, evaluate AI click-appeal scores (1–10), or request new variants
                   </p>
                 </div>
-                <span className="text-xs text-amber-400 font-mono font-semibold">
-                  3 Variants Ready
-                </span>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleScoreThumbnailVariants}
+                    disabled={isScoringThumbnails}
+                    className="min-h-[40px] px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-zinc-950 flex items-center gap-1.5 shadow-md shadow-amber-500/20 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <Sparkles className={`w-3.5 h-3.5 ${isScoringThumbnails ? 'animate-spin' : ''}`} />
+                    <span>
+                      {isScoringThumbnails ? 'Scoring Variants...' : 'Score Variants 1–10 (Gemini)'}
+                    </span>
+                  </button>
+                </div>
               </div>
 
+              {/* Side-by-Side Variants Grid */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {formData.thumbnailVariants.map((variant) => (
                   <div
                     key={variant.id}
-                    onClick={() => handleSelectThumbnailVariant(variant.id)}
-                    className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-3 ${
+                    className={`p-4 rounded-2xl border transition-all flex flex-col justify-between gap-4 ${
                       variant.isSelected
-                        ? 'bg-amber-950/30 border-amber-400 ring-2 ring-amber-400/30 shadow-xl'
-                        : 'bg-zinc-950/60 border-zinc-800 hover:border-zinc-700'
+                        ? 'bg-amber-950/30 border-amber-400 ring-2 ring-amber-400/40 shadow-xl'
+                        : 'bg-zinc-950/70 border-zinc-800 hover:border-zinc-700'
                     }`}
                   >
-                    <div className="space-y-2.5">
-                      {/* Visual Placeholder Box with dynamic gradient */}
+                    <div className="space-y-3">
+                      {/* Thumbnail Preview Banner */}
                       <div
-                        className={`w-full h-32 rounded-xl bg-gradient-to-br ${variant.colorGradient} p-3 flex flex-col justify-between relative border border-white/10 overflow-hidden shadow-inner`}
+                        className={`w-full h-36 rounded-xl bg-gradient-to-br ${variant.colorGradient} p-3 flex flex-col justify-between relative border border-white/10 overflow-hidden shadow-inner`}
                       >
                         <div className="flex items-center justify-between">
-                          <span className="px-2 py-0.5 rounded bg-black/70 backdrop-blur-md text-[10px] font-mono font-bold text-amber-400 border border-amber-500/30">
+                          <span className="px-2 py-0.5 rounded bg-black/75 backdrop-blur-md text-[10px] font-mono font-bold text-amber-400 border border-amber-500/30">
                             CTR: {variant.predictedCtr}
                           </span>
                           {variant.isSelected && (
-                            <span className="px-2 py-0.5 rounded-full bg-amber-400 text-zinc-950 text-[10px] font-black uppercase tracking-wider">
-                              Active
+                            <span className="px-2.5 py-0.5 rounded-full bg-amber-400 text-zinc-950 text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow">
+                              <Award className="w-3 h-3" />
+                              Winner
                             </span>
                           )}
                         </div>
 
-                        <div className="bg-black/60 backdrop-blur-md p-2 rounded-lg border border-white/10">
-                          <p className="text-[11px] font-extrabold text-white leading-tight line-clamp-2">
+                        <div className="bg-black/70 backdrop-blur-md p-2 rounded-lg border border-white/15">
+                          <p className="text-xs font-black text-white leading-tight line-clamp-2">
                             {variant.label}
                           </p>
                         </div>
                       </div>
 
-                      {/* Concept notes */}
-                      <div className="space-y-1">
+                      {/* Click Appeal Score (Gemini 1-10) */}
+                      <div className="p-2.5 rounded-xl bg-zinc-900 border border-zinc-800 space-y-1">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-[11px] text-zinc-400 font-semibold flex items-center gap-1">
+                            <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" /> Click Appeal
+                          </span>
+                          <span className="font-mono font-black text-amber-400 text-sm">
+                            {variant.clickAppealScore !== undefined
+                              ? `${variant.clickAppealScore} / 10`
+                              : 'Not scored yet'}
+                          </span>
+                        </div>
+                        {variant.clickAppealCritique && (
+                          <p className="text-[11px] text-zinc-400 leading-tight">
+                            {variant.clickAppealCritique}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Concept summary */}
+                      <div className="space-y-1 text-xs">
                         <span className="text-[11px] font-bold text-zinc-300 block">
-                          Visual Composition:
+                          Visual Hook Concept:
                         </span>
-                        <p className="text-xs text-zinc-400 line-clamp-3 leading-snug">
+                        <p className="text-zinc-400 line-clamp-3 leading-snug">
                           {variant.concept}
                         </p>
                       </div>
+
+                      {/* Winner Timestamp if picked */}
+                      {variant.selectedAt && (
+                        <div className="text-[11px] font-mono text-emerald-400 flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          <span>Winner picked: {variant.selectedAt}</span>
+                        </div>
+                      )}
                     </div>
 
-                    <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between text-xs">
+                    {/* Action button */}
+                    <div className="pt-2 border-t border-zinc-800 flex items-center justify-between gap-2">
                       <span className="text-[11px] text-zinc-500 font-mono">
-                        {variant.contrastScore}
+                        Contrast: {variant.contrastScore}
                       </span>
                       <button
                         type="button"
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${
+                        onClick={() => handlePickWinner(variant.id)}
+                        className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all ${
                           variant.isSelected
-                            ? 'bg-amber-400 text-zinc-950 font-bold'
-                            : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                            ? 'bg-amber-400 text-zinc-950 shadow-md'
+                            : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200'
                         }`}
                       >
-                        {variant.isSelected ? 'Selected' : 'Select'}
+                        {variant.isSelected ? 'Winner Selected' : 'Pick as Winner'}
                       </button>
                     </div>
                   </div>
                 ))}
+              </div>
+
+              {/* Thumbnail Gate Action Bar */}
+              <div className="p-4 rounded-2xl bg-zinc-950 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <span className="text-xs font-bold text-zinc-200 block">
+                    Thumbnail Gate Verification
+                  </span>
+                  <p className="text-[11px] text-zinc-400">
+                    Validate that high-CTR winner is picked before moving to 4K render
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowRevisionForm(true)}
+                    className="min-h-[40px] px-3.5 py-2 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-amber-300 border border-zinc-700 transition-colors cursor-pointer"
+                  >
+                    Request New Variants
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDirectApprove}
+                    className="min-h-[40px] px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>Approve Thumbnail Gate</span>
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -677,7 +1217,6 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
                   </div>
                 </div>
 
-                {/* Interactive quick controls */}
                 <div className="flex flex-wrap items-center gap-2 pt-2">
                   <button
                     type="button"
@@ -702,34 +1241,12 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
                   </button>
                 </div>
               </div>
-
-              {/* Technical Specifications */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="p-3 bg-zinc-950/60 rounded-xl border border-zinc-800/80">
-                  <span className="text-[10px] text-zinc-500 uppercase font-mono block">Resolution</span>
-                  <span className="text-xs font-bold text-zinc-200">{formData.renderStatus.resolution}</span>
-                </div>
-                <div className="p-3 bg-zinc-950/60 rounded-xl border border-zinc-800/80">
-                  <span className="text-[10px] text-zinc-500 uppercase font-mono block">Frame Rate</span>
-                  <span className="text-xs font-bold text-zinc-200">{formData.renderStatus.framerate}</span>
-                </div>
-                <div className="p-3 bg-zinc-950/60 rounded-xl border border-zinc-800/80">
-                  <span className="text-[10px] text-zinc-500 uppercase font-mono block">Master Codec</span>
-                  <span className="text-xs font-bold text-zinc-200">{formData.renderStatus.codec}</span>
-                </div>
-                <div className="p-3 bg-zinc-950/60 rounded-xl border border-zinc-800/80">
-                  <span className="text-[10px] text-zinc-500 uppercase font-mono block">Est. Time</span>
-                  <span className="text-xs font-bold text-zinc-200">
-                    {formData.renderStatus.renderTimeEst || '~30 mins'}
-                  </span>
-                </div>
-              </div>
             </div>
           )}
 
           {/* TAB 5: PUBLISH CHECKLIST */}
           {activeTab === 'publish' && (
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-sm font-bold text-zinc-100 flex items-center gap-2">
@@ -737,7 +1254,7 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
                     Multi-Platform Syndication Checklist
                   </h3>
                   <p className="text-xs text-zinc-400">
-                    Verify each distribution target before switching status to Live
+                    YouTube check is mandatory before this episode can move to Live
                   </p>
                 </div>
                 <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/25">
@@ -745,7 +1262,17 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
                 </span>
               </div>
 
-              {/* Checklist items with large 44px+ touch targets */}
+              {/* YouTube Mandatory Warning if unchecked */}
+              {!formData.publishChecklist?.youtube && (
+                <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-500/40 flex items-center gap-3 text-xs text-amber-300">
+                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>
+                    <strong>Mandatory Gate:</strong> YouTube primary release must be checked off with timestamps before advancing to Live.
+                  </span>
+                </div>
+              )}
+
+              {/* Checklist items */}
               <div className="space-y-2.5">
                 {[
                   {
@@ -753,33 +1280,40 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
                     name: 'YouTube Primary Release',
                     desc: '4K video file, chapter timestamps, tags, custom thumbnail, pinned discussion comment.',
                     icon: '▶️',
+                    isMandatory: true,
                   },
                   {
                     key: 'instagram' as const,
                     name: 'Instagram Reel & Carousel',
                     desc: '9:16 vertical hook teaser, 6-slide story carousel, Link in Bio updated.',
                     icon: '📸',
+                    isMandatory: false,
                   },
                   {
                     key: 'facebook' as const,
                     name: 'Facebook Watch & Group Post',
                     desc: 'Longform video upload to channel page with interactive poll for viewers.',
                     icon: '👥',
+                    isMandatory: false,
                   },
                   {
                     key: 'x' as const,
                     name: 'X (Twitter) Video Thread',
                     desc: '60-second highlight clip with 4-tweet historical/technical breakdown thread.',
                     icon: '✖️',
+                    isMandatory: false,
                   },
                   {
                     key: 'linkedin' as const,
                     name: 'LinkedIn Behind-the-Scenes',
                     desc: 'Documentary production case study / storytelling craft article.',
                     icon: '💼',
+                    isMandatory: false,
                   },
                 ].map((item) => {
-                  const isChecked = formData.publishChecklist[item.key];
+                  const isChecked = !!formData.publishChecklist?.[item.key];
+                  const timestamp = formData.publishChecklistTimestamps?.[item.key];
+
                   return (
                     <button
                       key={item.key}
@@ -794,14 +1328,26 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
                       <div className="flex items-center gap-3">
                         <span className="text-xl shrink-0">{item.icon}</span>
                         <div>
-                          <span
-                            className={`text-sm font-bold block ${
-                              isChecked ? 'text-emerald-300' : 'text-zinc-200'
-                            }`}
-                          >
-                            {item.name}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`text-sm font-bold block ${
+                                isChecked ? 'text-emerald-300' : 'text-zinc-200'
+                              }`}
+                            >
+                              {item.name}
+                            </span>
+                            {item.isMandatory && (
+                              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-red-500/20 text-red-300 border border-red-500/30">
+                                Required for Live
+                              </span>
+                            )}
+                          </div>
                           <span className="text-xs text-zinc-400 line-clamp-1">{item.desc}</span>
+                          {timestamp && (
+                            <span className="text-[10px] font-mono text-emerald-400 block mt-0.5">
+                              ✓ Checked: {timestamp}
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -855,9 +1401,13 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
                   onMoveStage(formData.id, nextStage.id);
                   onClose();
                 }}
-                disabled={isGated && !isGateApproved}
+                disabled={
+                  (isGated && !isGateApproved) ||
+                  (nextStage.id === 'live' && !formData.publishChecklist?.youtube)
+                }
                 className={`min-h-[44px] px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 shadow-lg transition-all cursor-pointer ${
-                  isGated && !isGateApproved
+                  (isGated && !isGateApproved) ||
+                  (nextStage.id === 'live' && !formData.publishChecklist?.youtube)
                     ? 'bg-zinc-800/80 text-zinc-500 border border-zinc-800 cursor-not-allowed'
                     : 'bg-amber-500 hover:bg-amber-400 text-zinc-950 shadow-amber-500/20'
                 }`}

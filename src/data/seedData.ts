@@ -41,6 +41,32 @@ export const INITIAL_EPISODES: Episode[] = [
       hookSummary: 'Did you know Zeus once ran away in fear? Meet Typhon, the scariest storm creature in ancient myth!',
       outline: '1. The stormy birth under Mount Etna\n2. Zeus throws 100 thunderbolts\n3. The gods disguise as animals\n4. Hermes retrieves the stolen lightning sinews\n5. The final volcanic burial',
       scriptReviewState: 'Approved',
+      fullScript: {
+        title: 'Why Zeus Feared Typhon: The Hundred-Headed Monster That Shook Olympus',
+        hook: '[SFX: Thunder crackle, booming wind] Imagine a monster so gigantic that when he stood up, his head brushed the stars, and his arms stretched from sunrise to sunset! Every Greek god on Mount Olympus had defeated giants, sea serpents, and hydras. But on the day Typhon rose from the earth, the king of gods himself dropped his thunderbolts and ran. This is the story of the day Mount Olympus almost fell.',
+        sections: [
+          {
+            heading: 'Act I: Gaia’s Secret Weapon',
+            content: '[Visual cue: Dark storm clouds swirl over Mount Etna with glowing red magma fissures]\nAfter Zeus locked away the Titans in the deep abyss of Tartarus, Mother Earth—Gaia—was furious. She forged a child made of molten rock and hurricane force: Typhon. He had a hundred serpent heads, each breathing blazing dragon fire, and hands made of writhing vipers. As he climbed Mount Olympus, his roars shook the foundations of the world.',
+          },
+          {
+            heading: 'Act II: The Great Escape to Egypt',
+            content: '[Visual cue: Whimsical animation of Olympian gods transforming into animals fleeing across the Mediterranean]\nWhen the Olympians saw Typhon blotting out the sun, they panicked. Hera turned into a cow, Apollo into a hawk, and Hermes into an ibis, fleeing all the way to the sands of Egypt. Only Athena stood her ground and called Zeus a coward until he turned back with his legendary sickle.',
+          },
+          {
+            heading: 'Act III: The Volcanic Tomb Under Mount Etna',
+            content: '[Visual cue: Epic cinematic clash of 100 lightning strikes colliding with volcanic blasts]\nZeus summoned every storm cloud on Earth and hurled one hundred master thunderbolts simultaneously. With Typhon staggering, Zeus lifted the entire island mountain of Sicily and slammed it right on top of him. To this day, when Mount Etna rumbles and spits fire, ancient Greeks say it is Typhon trying to break free.',
+          },
+        ],
+        cta: 'Would you have stayed and fought Typhon or flown to Egypt like the gods? Vote in the poll right above, smash that subscribe button for Little Olympus, and tune in next Tuesday for Perseus vs the Gorgons!',
+        summary: 'A fast-paced, kid-tailored mythic breakdown detailing Typhon\'s terrifying origin, the Olympians fleeing in animal disguise, and Zeus pinning him beneath Mount Etna.',
+        retentionBeats: [
+          'Minute 0:40: The terrifying visual reveal of Typhon reaching the stars',
+          'Minute 4:20: The comedic yet tense animal escape of the gods to Egypt',
+          'Minute 8:50: The final 100-lightning-bolt barrage and Mount Etna burial',
+        ],
+        estimatedPacing: '150 WPM energetic kid-friendly cadence with bold SFX and animated chapter pauses.',
+      },
     },
     thumbnailVariants: [
       {
@@ -49,7 +75,10 @@ export const INITIAL_EPISODES: Episode[] = [
         concept: 'Extreme close up of Zeus with crackling thunder bolt vs 100 dragon heads in background',
         contrastScore: '92% WCAG AAA',
         predictedCtr: '8.4%',
+        clickAppealScore: 9.2,
+        clickAppealCritique: 'High-voltage contrast and intense eye contact create an immediate curiosity gap for mobile feeds.',
         isSelected: true,
+        selectedAt: 'Sep 16, 2026 • 15:40',
         colorGradient: 'from-amber-600 via-purple-900 to-black',
       },
       {
@@ -58,6 +87,8 @@ export const INITIAL_EPISODES: Episode[] = [
         concept: 'Kids looking upward in shock as the sky turns volcanic crimson',
         contrastScore: '78% High Contrast',
         predictedCtr: '6.9%',
+        clickAppealScore: 7.4,
+        clickAppealCritique: 'Strong emotional expressions, but ruins lack the immediate monster recognition needed for younger viewers.',
         isSelected: false,
         colorGradient: 'from-rose-600 via-amber-800 to-zinc-950',
       },
@@ -67,6 +98,8 @@ export const INITIAL_EPISODES: Episode[] = [
         concept: 'Typhon dwarfing the Parthenon with glowing yellow question marks',
         contrastScore: '88% High Contrast',
         predictedCtr: '7.8%',
+        clickAppealScore: 8.6,
+        clickAppealCritique: 'Comparison charts perform reliably well in science/myth niches; yellow graphical accents pop cleanly.',
         isSelected: false,
         colorGradient: 'from-blue-600 via-indigo-950 to-black',
       },
@@ -85,6 +118,9 @@ export const INITIAL_EPISODES: Episode[] = [
       facebook: false,
       x: false,
       linkedin: false,
+      timestamps: {
+        youtube: 'Sep 16, 2026 • 14:40',
+      },
     },
     createdAt: '2026-09-14T09:00:00.000Z',
     updatedAt: '2026-09-16T14:32:00.000Z',
@@ -109,6 +145,32 @@ export const INITIAL_EPISODES: Episode[] = [
       hookSummary: 'Tonka beat Hasbro to American shelves by 6 full months. So why did everybody forget the Go-Bots?',
       outline: '1. Popy’s Machine Robo origins in Japan\n2. Tonka’s rapid localization blitz\n3. Hanna-Barbera vs Sunbow animation duel\n4. The fateful Christmas of 1984\n5. Bandai’s die-cast engineering vs Hasbro’s Marvel lore',
       scriptReviewState: 'Review Requested',
+      fullScript: {
+        title: 'The Lost Giant of 1984: How Go-Bots Almost Beat Transformers to the Screen',
+        hook: '[SFX: Synthwave 80s bassline, metallic transformation clank]\nIn the fall of 1983, a revolution landed in American toy aisles. Miniature cars and fighter jets that transformed into heavy, die-cast metal robots. They were cheap, indestructible, and sold out in 48 hours. But they weren\'t Transformers. They were the Go-Bots. Tonka beat Hasbro to the market by six full months. So how did the undisputed king of 1984 transform into pop culture\'s biggest punchline?',
+        sections: [
+          {
+            heading: 'Act I: Popy, Bandai, and the Machine Robo Miracle',
+            content: '[Visual cue: Archival 1982 Japanese catalog scans of Popy Machine Robo 600 series]\nIn Tokyo, toy giant Bandai\'s subsidiary Popy had struck gold. Unlike towering plastic giants, these were pocket-sized, affordable ¥600 engineering marvels made of heavy zinc die-cast metal. Tonka executives visiting the Tokyo Toy Show realized they had found the holy grail: a toy line that could rival Star Wars at half the retail cost.',
+          },
+          {
+            heading: 'Act II: The Animation Arms Race (Hanna-Barbera vs Sunbow)',
+            content: '[Visual cue: Split screen comparison of Go-Bots animation vs Sunbow\'s Transformers pilot]\nTonka rushed a 5-part miniseries with Hanna-Barbera. It was decent, but it followed standard Saturday morning cartoon tropes. Meanwhile, Hasbro partnered with Marvel Comics and Sunbow Productions. Marvel legendary writer Bob Budiansky spent a weekend inventing names like Optimus Prime, Megatron, and Cybertron, turning plastic cars into a Shakespearean civil war.',
+          },
+          {
+            heading: 'Act III: Christmas 1984 and the Collapse',
+            content: '[Visual cue: 1984 department store holiday circular with prices and sell-out tallies]\nWhen Christmas 1984 hit, Transformers didn\'t just outsell Go-Bots—they rewrote the toy industry playbook. By 1986, Go-Bots were relegated to bargain bins, and five years later, Hasbro bought Tonka outright, locking Leader-1 and Cy-Kill in their corporate vaults forever.',
+          },
+        ],
+        cta: 'Did you grow up with Go-Bots or Transformers? Tell us your favorite 80s robot in the comments, share this retrospective with a fellow collector, and subscribe to Iron Legends for more lost mecha histories.',
+        summary: 'An investigative retrospective uncovering why Tonka\'s first-mover advantage with Bandai\'s Machine Robo was erased by Hasbro and Marvel\'s worldbuilding masterclass.',
+        retentionBeats: [
+          'Minute 1:15: Uncovering Tonka\'s secret Tokyo Toy Show discovery meeting',
+          'Minute 7:30: The animation duel—why Hanna-Barbera couldn\'t match Sunbow\'s anime-inspired action',
+          'Minute 13:40: The tragic irony of Hasbro purchasing Tonka and shelving the IP',
+        ],
+        estimatedPacing: '140 WPM analytical documentary cadence with vintage audio stings and catalog closeups.',
+      },
     },
     thumbnailVariants: [
       {
@@ -117,7 +179,10 @@ export const INITIAL_EPISODES: Episode[] = [
         concept: 'High-gloss metallic chrome reflection with vintage 80s neon grid backdrop',
         contrastScore: '94% Extreme Pop',
         predictedCtr: '9.2%',
+        clickAppealScore: 9.5,
+        clickAppealCritique: 'The side-by-side chrome split creates instant recognizable tension between the rival icons.',
         isSelected: true,
+        selectedAt: 'Sep 17, 2026 • 09:15',
         colorGradient: 'from-cyan-500 via-blue-900 to-black',
       },
       {
@@ -126,6 +191,8 @@ export const INITIAL_EPISODES: Episode[] = [
         concept: 'Cy-Kill toy with dramatic rim lighting and "THE TRUTH" bold typography',
         contrastScore: '85% Solid Pop',
         predictedCtr: '7.4%',
+        clickAppealScore: 7.9,
+        clickAppealCritique: 'Atmospheric and moody, but "THE TRUTH" clickbait text is slightly overused in retro toy niches.',
         isSelected: false,
         colorGradient: 'from-red-600 via-purple-950 to-zinc-950',
       },
@@ -135,6 +202,8 @@ export const INITIAL_EPISODES: Episode[] = [
         concept: 'Retro CRT television frame exploding with mechanical gears',
         contrastScore: '81% Retro Vibe',
         predictedCtr: '6.8%',
+        clickAppealScore: 7.2,
+        clickAppealCritique: 'CRT television frame reduces effective artwork size on 180px mobile cards.',
         isSelected: false,
         colorGradient: 'from-emerald-600 via-slate-900 to-black',
       },
@@ -201,6 +270,32 @@ export const INITIAL_EPISODES: Episode[] = [
       hookSummary: 'An impregnable island fortress half a mile off the coast. How one 23-year-old Macedonian redrew the Mediterranean coastline forever.',
       outline: '1. The Phoenician naval powerhouse\n2. Alexander’s rejection of the compromise\n3. Engineering the giant causeway (The Mole)\n4. Tyre’s floating fireships and defensive artillery\n5. The siege towers collapse and the final breach',
       scriptReviewState: 'Approved',
+      fullScript: {
+        title: 'The Siege of Tyre: How Alexander Built a Kilometer-Long Highway Into the Sea',
+        hook: '[SFX: Roaring Mediterranean surf, war drums]\nIn 332 BC, an island city sat half a mile off the coast of modern-day Lebanon, protected by 150-foot stone walls that dropped directly into deep ocean water. The Phoenician empire believed Tyre was completely untouchable by land armies. But Alexander the Great didn\'t have a navy—so he made an impossible decision: if he could not sail to the island, he would walk to it.',
+        sections: [
+          {
+            heading: 'Act I: The Impregnable Island Citadel',
+            content: '[Visual cue: 3D bathymetric elevation map demonstrating the 20-foot sea trench protecting New Tyre]\nTyre was the economic engine of the Persian Mediterranean. When Alexander asked to make a sacrifice at their temple of Melqart, the Tyrian magistrates barred the gates. Alexander knew that marching on Egypt with an undefeated hostile naval base at his back was suicide. The siege was ordered.',
+          },
+          {
+            heading: 'Act II: Engineering The Impossible Mole',
+            content: '[Visual cue: Animated architectural cross-section of timber piles, cedar trunks from Lebanon, and stone fill]\nMacedonian engineers began dumping thousands of tons of stone, earth, and whole cedar trees from Mount Lebanon directly into the sea, constructing a 200-foot-wide causeway. As the mole reached deep water, Tyrians deployed floating fire-ships packed with sulphur and pitch, burning Alexander’s wooden siege engines to cinders.',
+          },
+          {
+            heading: 'Act III: The Naval Counter-Blow and Breakthrough',
+            content: '[Visual cue: Fleet tactical overview showing 224 allied ships blockading North and South Tyrian harbors]\nRecognizing the stalemate, Alexander summoned fleets from Cyprus and Sidon, neutralizing Tyre\'s naval raids. Floating battering rams hammered the sea walls until a breach was opened. Alexander led the elite Hypaspists through the rubble himself, permanently connecting the island of Tyre to the mainland to this very day.',
+          },
+        ],
+        cta: 'Was Alexander\'s causeway at Tyre the greatest engineering feat of antiquity? Leave your verdict below, subscribe to Empire Decoded for weekly deep-dives into ancient tactical warfare, and join our Discord for source bibliographies.',
+        summary: 'A deep-dive tactical documentary detailing Alexander\'s 7-month siege of Tyre, the engineering of the permanent causeway, and the ultimate naval showdown.',
+        retentionBeats: [
+          'Minute 2:30: The Tyrian magistrates\' defiance and Alexander\'s strategic gamble',
+          'Minute 10:15: The catastrophic fire-ship raid that wiped out the Macedonian siege towers',
+          'Minute 19:40: The coordinated naval-land assault and breach of the seawall',
+        ],
+        estimatedPacing: '135 WPM authoritative documentary pace with rich cinematic sound design and maps.',
+      },
     },
     thumbnailVariants: [
       {
@@ -209,7 +304,10 @@ export const INITIAL_EPISODES: Episode[] = [
         concept: 'Golden cinematic dawn lighting with catapult flaming stones raining into the sea',
         contrastScore: '96% Cinematic AAA',
         predictedCtr: '11.8%',
+        clickAppealScore: 9.8,
+        clickAppealCritique: 'World-class cinematic lighting; flaming artillery and towering wooden engine evoke immediate awe.',
         isSelected: true,
+        selectedAt: 'Sep 13, 2026 • 16:40',
         colorGradient: 'from-amber-500 via-amber-900 to-black',
       },
       {
@@ -218,6 +316,8 @@ export const INITIAL_EPISODES: Episode[] = [
         concept: 'High-angle aerial photogrammetry map of Phoenician coast and fortress walls',
         contrastScore: '89% High Contrast',
         predictedCtr: '8.7%',
+        clickAppealScore: 8.5,
+        clickAppealCritique: 'High-density tactical map appeals strongly to military history enthusiasts.',
         isSelected: false,
         colorGradient: 'from-emerald-600 via-slate-900 to-black',
       },
@@ -227,6 +327,8 @@ export const INITIAL_EPISODES: Episode[] = [
         concept: 'Macedonian helmet reflection with raging trireme fire in the harbor',
         contrastScore: '91% High Contrast',
         predictedCtr: '9.5%',
+        clickAppealScore: 8.9,
+        clickAppealCritique: 'Human emotion paired with environmental fire delivers strong drama.',
         isSelected: false,
         colorGradient: 'from-orange-600 via-stone-900 to-black',
       },
@@ -245,6 +347,13 @@ export const INITIAL_EPISODES: Episode[] = [
       facebook: true,
       x: true,
       linkedin: true,
+      timestamps: {
+        youtube: 'Sep 15, 2026 • 11:15',
+        instagram: 'Sep 15, 2026 • 11:20',
+        facebook: 'Sep 15, 2026 • 11:22',
+        x: 'Sep 15, 2026 • 11:25',
+        linkedin: 'Sep 15, 2026 • 11:30',
+      },
     },
     liveAt: getRecentLiveDate(),
     createdAt: '2026-09-10T08:00:00.000Z',

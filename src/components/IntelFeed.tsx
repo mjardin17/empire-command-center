@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   Check,
   Compass,
+  FileJson,
   Filter,
   Flame,
   Plus,
@@ -17,6 +18,7 @@ interface IntelFeedProps {
   selectedChannel: ChannelId | 'all';
   onMakeEpisode: (intelId: string) => void;
   onAddCustomIntel: (item: Omit<IntelItem, 'id' | 'timestamp'>) => void;
+  onOpenApexImport?: () => void;
 }
 
 export const IntelFeed: React.FC<IntelFeedProps> = ({
@@ -24,6 +26,7 @@ export const IntelFeed: React.FC<IntelFeedProps> = ({
   selectedChannel,
   onMakeEpisode,
   onAddCustomIntel,
+  onOpenApexImport,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -103,6 +106,19 @@ export const IntelFeed: React.FC<IntelFeedProps> = ({
               className="w-full pl-9 pr-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-amber-400"
             />
           </div>
+
+          {onOpenApexImport && (
+            <button
+              type="button"
+              id="btn-import-apex"
+              onClick={onOpenApexImport}
+              className="min-h-[40px] px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border border-amber-500/30 flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+              title="Import JSON feed from APEX scanner"
+            >
+              <FileJson className="w-4 h-4" />
+              <span>Import from APEX</span>
+            </button>
+          )}
 
           <button
             type="button"

@@ -1,19 +1,34 @@
 import React, { useEffect, useState } from 'react';
+import {
+  Bell,
+  CheckCircle2,
+  Compass,
+  DollarSign,
+  Layers,
+  Sparkles,
+  TrendingUp,
+  X,
+  Youtube,
+} from 'lucide-react';
+import { ApexImportModal } from './components/ApexImportModal';
 import { EpisodeDetailModal } from './components/EpisodeDetailModal';
 import { Header } from './components/Header';
 import { IntelFeed } from './components/IntelFeed';
 import { NewEpisodeModal } from './components/NewEpisodeModal';
 import { PipelineBoard } from './components/PipelineBoard';
+import { RevenueSection } from './components/RevenueSection';
+import { SettingsModal } from './components/SettingsModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
 import { WeeklyTargetTracker } from './components/WeeklyTargetTracker';
+import { YouTubeAnalyticsSection } from './components/YouTubeAnalyticsSection';
 import {
   createCustomEpisode,
   createEpisodeFromIntel,
   deleteEpisode,
-  fetchEpisodeById,
   fetchEpisodes,
   fetchIntelFeed,
   moveEpisodeStage,
+  requestNotificationPermission,
   resetToDefaults,
   saveEpisode,
   setGateApproval,
@@ -26,8 +41,19 @@ export default function App() {
   const [selectedChannel, setSelectedChannel] = useState<ChannelId | 'all'>('all');
   const [selectedEpisode, setSelectedEpisode] = useState<Episode | null>(null);
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isApexImportOpen, setIsApexImportOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Section view selector: 'all' | 'pipeline' | 'analytics' | 'revenue' | 'intel'
+  const [activeSectionView, setActiveSectionView] = useState<
+    'all' | 'pipeline' | 'analytics' | 'revenue' | 'intel'
+  >('all');
+
+  // Browser notification permission state
+  const [notificationState, setNotificationState] = useState<string>('default');
+  const [dismissNotificationBanner, setDismissNotificationBanner] = useState<boolean>(false);
 
   const addToast = (type: 'success' | 'warning' | 'info', message: string) => {
     const id = Date.now().toString() + Math.random().toString().slice(2, 6);
@@ -60,7 +86,22 @@ export default function App() {
       }
     }
     loadData();
+
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setNotificationState(Notification.permission);
+    }
   }, []);
+
+  const handleEnableNotifications = async () => {
+    const granted = await requestNotificationPermission();
+    if (granted) {
+      setNotificationState('granted');
+      addToast('success', 'Browser notifications enabled for gate approvals!');
+    } else {
+      setNotificationState('denied');
+      addToast('warning', 'Notification permission not granted.');
+    }
+  };
 
   // Gate Approval Handler
   const handleApproveGate = async (episodeId: string, stage: StageId) => {
@@ -203,6 +244,13 @@ export default function App() {
     addToast('success', `Added "${item.title.slice(0, 30)}..." to Intel Feed.`);
   };
 
+  // Handle APEX import success
+  const handleApexImportSuccess = async (count: number) => {
+    const freshIntel = await fetchIntelFeed();
+    setIntelItems(freshIntel);
+    addToast('success', `Successfully imported ${count} research leads from APEX Scanner!`);
+  };
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col selection:bg-amber-500 selection:text-zinc-950">
       {/* Top sticky navigation and channel filter */}
@@ -212,10 +260,116 @@ export default function App() {
         episodes={episodes}
         onNewEpisode={() => setIsNewModalOpen(true)}
         onResetData={handleResetData}
+        onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
       {/* Main Workspace Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-7">
+        {/* BROWSER NOTIFICATIONS PERMISSION BANNER */}
+        {notificationState === 'default' && !dismissNotificationBanner && (
+          <div className="p-3.5 sm:p-4 rounded-2xl bg-amber-950/40 border border-amber-500/35 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+            <div className="flex items-start sm:items-center gap-3">
+              <span className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
+                <Bell className="w-4 h-4" />
+              </span>
+              <div>
+                <h4 className="text-xs sm:text-sm font-bold text-zinc-100">
+                  Enable Browser Push Notifications for Approval Gates
+                </h4>
+                <p className="text-xs text-zinc-400">
+                  Receive instant alerts whenever an episode reaches Script, Thumbnail, Render, or Publish gates.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+              <button
+                type="button"
+                onClick={handleEnableNotifications}
+                className="min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-zinc-950 flex items-center gap-1.5 shadow-md shadow-amber-500/20 active:scale-95 transition-all cursor-pointer"
+              >
+                <Bell className="w-3.5 h-3.5" />
+                <span>Allow Notifications</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDismissNotificationBanner(true)}
+                className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors cursor-pointer"
+                title="Dismiss"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* SECTION NAVIGATION TABS */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none border-b border-zinc-800/80">
+          <button
+            type="button"
+            onClick={() => setActiveSectionView('all')}
+            className={`min-h-[44px] px-4 py-2 border-b-2 text-xs sm:text-sm font-bold whitespace-nowrap transition-colors flex items-center gap-2 cursor-pointer ${
+              activeSectionView === 'all'
+                ? 'border-amber-400 text-amber-300 bg-amber-500/5'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <Layers className="w-4 h-4" />
+            <span>Full Dashboard Overview</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSectionView('pipeline')}
+            className={`min-h-[44px] px-4 py-2 border-b-2 text-xs sm:text-sm font-semibold whitespace-nowrap transition-colors flex items-center gap-2 cursor-pointer ${
+              activeSectionView === 'pipeline'
+                ? 'border-amber-400 text-amber-300 bg-amber-500/5'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <span>Pipeline Board ({episodes.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSectionView('analytics')}
+            className={`min-h-[44px] px-4 py-2 border-b-2 text-xs sm:text-sm font-semibold whitespace-nowrap transition-colors flex items-center gap-2 cursor-pointer ${
+              activeSectionView === 'analytics'
+                ? 'border-amber-400 text-amber-300 bg-amber-500/5'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <Youtube className="w-4 h-4 text-red-400" />
+            <span>YouTube Analytics</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSectionView('revenue')}
+            className={`min-h-[44px] px-4 py-2 border-b-2 text-xs sm:text-sm font-semibold whitespace-nowrap transition-colors flex items-center gap-2 cursor-pointer ${
+              activeSectionView === 'revenue'
+                ? 'border-amber-400 text-amber-300 bg-amber-500/5'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <DollarSign className="w-4 h-4 text-emerald-400" />
+            <span>Revenue vs Targets</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSectionView('intel')}
+            className={`min-h-[44px] px-4 py-2 border-b-2 text-xs sm:text-sm font-semibold whitespace-nowrap transition-colors flex items-center gap-2 cursor-pointer ${
+              activeSectionView === 'intel'
+                ? 'border-amber-400 text-amber-300 bg-amber-500/5'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <Compass className="w-4 h-4 text-amber-400" />
+            <span>Intel & APEX Leads ({intelItems.length})</span>
+          </button>
+        </div>
+
         {/* Loading State */}
         {isLoading ? (
           <div className="flex items-center justify-center min-h-[300px]">
@@ -227,32 +381,51 @@ export default function App() {
             </div>
           </div>
         ) : (
-          <>
-            {/* 1. WEEKLY TARGET TRACKER */}
-            <WeeklyTargetTracker
-              episodes={episodes}
-              onSelectEpisode={(ep) => setSelectedEpisode(ep)}
-            />
+          <div className="space-y-10">
+            {/* 1. WEEKLY TARGET TRACKER (always shown or on pipeline) */}
+            {(activeSectionView === 'all' || activeSectionView === 'pipeline') && (
+              <WeeklyTargetTracker
+                episodes={episodes}
+                onSelectEpisode={(ep) => setSelectedEpisode(ep)}
+              />
+            )}
 
             {/* 2. PRODUCTION PIPELINE KANBAN BOARD */}
-            <PipelineBoard
-              episodes={episodes}
-              selectedChannel={selectedChannel}
-              onSelectEpisode={(ep) => setSelectedEpisode(ep)}
-              onApproveGate={handleApproveGate}
-              onRequestChanges={handleRequestChanges}
-              onMoveStage={handleMoveStage}
-              onNewEpisode={() => setIsNewModalOpen(true)}
-            />
+            {(activeSectionView === 'all' || activeSectionView === 'pipeline') && (
+              <PipelineBoard
+                episodes={episodes}
+                selectedChannel={selectedChannel}
+                onSelectEpisode={(ep) => setSelectedEpisode(ep)}
+                onApproveGate={handleApproveGate}
+                onRequestChanges={handleRequestChanges}
+                onMoveStage={handleMoveStage}
+                onNewEpisode={() => setIsNewModalOpen(true)}
+              />
+            )}
 
-            {/* 3. INTEL & RESEARCH FEED */}
-            <IntelFeed
-              intelItems={intelItems}
-              selectedChannel={selectedChannel}
-              onMakeEpisode={handleMakeEpisodeFromIntel}
-              onAddCustomIntel={handleAddCustomIntel}
-            />
-          </>
+            {/* 3. YOUTUBE ANALYTICS (PER-CHANNEL VIA YOUTUBE DATA API) */}
+            {(activeSectionView === 'all' || activeSectionView === 'analytics') && (
+              <YouTubeAnalyticsSection
+                onOpenSettings={() => setIsSettingsOpen(true)}
+              />
+            )}
+
+            {/* 4. REVENUE VS TARGETS (MONTHLY TRACKER & DAILY RUN RATE) */}
+            {(activeSectionView === 'all' || activeSectionView === 'revenue') && (
+              <RevenueSection />
+            )}
+
+            {/* 5. INTEL & APEX SCANNER FEED */}
+            {(activeSectionView === 'all' || activeSectionView === 'intel') && (
+              <IntelFeed
+                intelItems={intelItems}
+                selectedChannel={selectedChannel}
+                onMakeEpisode={handleMakeEpisodeFromIntel}
+                onAddCustomIntel={handleAddCustomIntel}
+                onOpenApexImport={() => setIsApexImportOpen(true)}
+              />
+            )}
+          </div>
         )}
       </main>
 
@@ -267,7 +440,7 @@ export default function App() {
           <span>•</span>
           <span>Empire Decoded 📜</span>
           <span>•</span>
-          <span>Persistent Factory State</span>
+          <span>Gemini & YouTube Data API Integrated</span>
         </p>
       </footer>
 
@@ -289,6 +462,18 @@ export default function App() {
         onClose={() => setIsNewModalOpen(false)}
         onCreate={handleCreateCustom}
         defaultChannel={selectedChannel !== 'all' ? selectedChannel : 'little_olympus'}
+      />
+
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        onResetFactoryData={handleResetData}
+      />
+
+      <ApexImportModal
+        isOpen={isApexImportOpen}
+        onClose={() => setIsApexImportOpen(false)}
+        onImportSuccess={handleApexImportSuccess}
       />
 
       {/* TOAST CONTAINER */}

@@ -3,6 +3,7 @@ import {
   Crown,
   Plus,
   RefreshCw,
+  Settings,
   Tv,
 } from 'lucide-react';
 import { ChannelId, CHANNELS, Episode } from '../types';
@@ -13,6 +14,7 @@ interface HeaderProps {
   episodes: Episode[];
   onNewEpisode: () => void;
   onResetData: () => void;
+  onOpenSettings?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -21,6 +23,7 @@ export const Header: React.FC<HeaderProps> = ({
   episodes,
   onNewEpisode,
   onResetData,
+  onOpenSettings,
 }) => {
   const getChannelCount = (chId: ChannelId) =>
     episodes.filter((e) => e.channelId === chId).length;
@@ -55,6 +58,19 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Right Action buttons */}
           <div className="flex items-center gap-2">
+            {onOpenSettings && (
+              <button
+                type="button"
+                id="btn-settings-header"
+                onClick={onOpenSettings}
+                className="min-h-[40px] px-3 py-1.5 rounded-xl text-xs font-semibold text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800/80 border border-zinc-800 transition-colors flex items-center gap-1.5 cursor-pointer"
+                title="Open Settings & API Keys"
+              >
+                <Settings className="w-3.5 h-3.5 text-amber-400" />
+                <span className="hidden sm:inline">Settings</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={() => {
@@ -66,7 +82,7 @@ export const Header: React.FC<HeaderProps> = ({
               title="Reset sample data"
             >
               <RefreshCw className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Reset Sample Data</span>
+              <span className="hidden md:inline">Reset</span>
             </button>
 
             <button

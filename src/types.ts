@@ -119,6 +119,9 @@ export interface ThumbnailVariant {
   predictedCtr: string;
   isSelected: boolean;
   colorGradient: string;
+  clickAppealScore?: number; // 1-10 from Gemini
+  clickAppealCritique?: string;
+  selectedAt?: string;
 }
 
 export interface PublishChecklist {
@@ -127,6 +130,29 @@ export interface PublishChecklist {
   facebook: boolean;
   x: boolean;
   linkedin: boolean;
+  timestamps?: {
+    youtube?: string;
+    instagram?: string;
+    facebook?: string;
+    x?: string;
+    linkedin?: string;
+  };
+}
+
+export interface ScriptSection {
+  heading: string;
+  content: string;
+}
+
+export interface FullScript {
+  title?: string;
+  hook: string;
+  sections: ScriptSection[];
+  cta: string;
+  summary?: string;
+  retentionBeats?: string[];
+  estimatedPacing?: string;
+  lastDraftedAt?: string;
 }
 
 export interface Episode {
@@ -135,12 +161,14 @@ export interface Episode {
   title: string;
   stage: StageId;
   gates: Record<StageId, StageGate>;
+  fullScript?: FullScript;
   scriptStatus: {
     wordCount: number;
     durationMinutes: number;
     hookSummary: string;
     outline: string;
     scriptReviewState: 'Drafting' | 'Review Requested' | 'Approved' | 'Needs Revisions';
+    fullScript?: FullScript;
   };
   thumbnailVariants: ThumbnailVariant[];
   renderStatus: {
@@ -152,6 +180,7 @@ export interface Episode {
     renderTimeEst?: string;
   };
   publishChecklist: PublishChecklist;
+  publishChecklistTimestamps?: Record<string, string | undefined>;
   liveAt?: string; // ISO date timestamp when reached Live
   createdAt: string;
   updatedAt: string;
@@ -169,4 +198,45 @@ export interface IntelItem {
   viralScore: number; // e.g. 94%
   tags: string[];
   isUsed?: boolean;
+}
+
+export interface YouTubeChannelStats {
+  channelId: ChannelId;
+  title: string;
+  channelYoutubeId: string;
+  subscribers: number;
+  totalViews: number;
+  last28DaysViews?: number;
+  videoCount: number;
+  customUrl?: string;
+  thumbnailUrl?: string;
+  lastFetchedAt?: string;
+}
+
+export interface MonthlyRevenueChannel {
+  channelId: ChannelId;
+  name: string;
+  monthlyTarget: number; // Little Olympus: 50k, Iron Legends: 35k, Empire Decoded: 80k
+  currentRevenue: number;
+  lastUpdated?: string;
+}
+
+export interface RevenueLogEntry {
+  id: string;
+  channelId: ChannelId;
+  amount: number;
+  source: string;
+  date: string;
+  notes?: string;
+}
+
+export interface ApexScannerRawItem {
+  id?: string;
+  title: string;
+  source: string;
+  timestamp?: string;
+  channel: string;
+  synopsis?: string;
+  viralScore?: number;
+  tags?: string[];
 }

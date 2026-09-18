@@ -1,0 +1,6 @@
+{
+  "name": "Empire Command Center",
+  "description": "A dark-themed, mobile-friendly YouTube episode factory dashboard with 6-stage pipeline, approval gates, weekly target tracker, and intel research feed.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

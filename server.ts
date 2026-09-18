@@ -29,30 +29,30 @@ function getGeminiClient(): GoogleGenAI | null {
 // 1. Generate Draft Script
 app.post('/api/gemini/generate-script', async (req, res) => {
   try {
-    const { title, channelId, hookSummary, outline } = req.body;
+    const { title, channelId, hookSummary, outline, sourceIntelTitle, sourceIntelName, tags } = req.body;
     if (!title) {
       return res.status(400).json({ error: 'Title is required' });
     }
 
     const ai = getGeminiClient();
     if (!ai) {
-      // Realistic fallback script if API key is not configured in local environment
+      // High-craft fallback script if API key is not configured
       const hook = hookSummary || `Did you know the untold story behind "${title}" changed everything we thought we knew? Let's decode the secret history.`;
       const sections = [
         {
-          heading: 'Act I: The Forgotten Origins',
-          content: `In the heart of the archives lies the genesis of ${title}. Long before it became legend, the early blueprints faced immense opposition. Primary sources indicate that what seemed like an overnight sensation was actually the result of intense rivalry and clandestine operations.`,
+          heading: 'Act I: The Forgotten Origins & The Spark',
+          content: `[Visual: Archival schematics and dramatic atmospheric lighting]\nIn the heart of the archives lies the genesis of ${title}. Long before it became legendary, the earliest records were surrounded by intense rivalries and high-stakes gambles. ${sourceIntelTitle ? `As documented in ${sourceIntelName || 'research files'}: "${sourceIntelTitle}".` : ''}`,
         },
         {
-          heading: 'Act II: The Climax and the Turning Point',
-          content: `When the pressure mounted, key decisions turned the tide. Strategic moves deployed on the ground defied conventional wisdom. Eye-witness accounts describe the moment the balance shifted irrevocably.`,
+          heading: 'Act II: The Conflict & The Tactical Turning Point',
+          content: `[Visual: Kinetic split-screen comparison and tactical diagram]\nWhen pressure reached the breaking point, a single audacious move altered the course of history. Primary witnesses documented the shocking confrontation that caught everyone off guard.`,
         },
         {
-          heading: 'Act III: The Aftermath and Legacy',
-          content: `The ramifications continue to echo today. Modern experts still study these decisive moments as masterclasses in strategy and resilience. What was forged in the fire established the empire we study today.`,
+          heading: 'Act III: The Climax & Modern Repercussions',
+          content: `[Visual: 4K macro focus and cinematic legacy summary]\nThe reverberations echo to this day. What seemed like a localized struggle fundamentally redefined the rules of the entire field. Modern experts still consider this a turning point.`,
         },
       ];
-      const cta = `Which detail of ${title} surprised you most? Drop your theory in the comments below, hit subscribe for our next documentary, and ring the bell so you never miss an episode.`;
+      const cta = `Which revelation in ${title} surprised you most? Drop your theory in the comments below, subscribe to the channel, and tap the bell so you never miss an episode breakdown!`;
       return res.json({
         hook,
         sections,
@@ -63,23 +63,31 @@ app.post('/api/gemini/generate-script', async (req, res) => {
       });
     }
 
-    const channelStyle =
+    const channelProfile =
       channelId === 'little_olympus'
-        ? 'Target audience is kids (ages 8-12) passionate about Greek mythology and legends. Tone is enthusiastic, high-energy, wondrous, fast-paced, and educational.'
+        ? 'Little Olympus 🏛️ (Target: Kids ages 8-12 fascinated by Greek mythology). Tone: High-energy, wondrous, witty god banter, vivid analogies, kid-safe humor, exciting mythological showdowns.'
         : channelId === 'iron_legends'
-        ? 'Target audience is nostalgic retro mecha and 80s anime/toy lore fans. Tone is analytical, nostalgic, reverent, sharp, and focused on behind-the-scenes industrial rivalries.'
-        : 'Target audience is history documentary buffs and military tactics enthusiasts. Tone is cinematic, serious, authoritative, gripping, and deeply grounded in primary historical sources.';
+        ? 'Iron Legends 🤖 (Target: Nostalgia retro mecha & 80s/90s robot anime/toy collectors). Tone: Analytical, reverent, sharp engineering breakdown, industrial manufacturing rivalries, heroic mechanical drama.'
+        : 'Empire Decoded 📜 (Target: History documentary buffs, military tactics & archaeology enthusiasts). Tone: Cinematic, authoritative, serious, rigorous, primary source citations, gripping tactical suspense.';
 
-    const prompt = `You are the lead showrunner and scriptwriter for YouTube channel.
-Channel style: ${channelStyle}
+    const intelContext = sourceIntelTitle
+      ? `\nIntel Dossier Lead: "${sourceIntelTitle}" (Source: ${sourceIntelName || 'Field Scanner'})\nRelevant Themes/Tags: ${(tags || []).join(', ')}`
+      : '';
+
+    const prompt = `You are the lead showrunner and YouTube video retention architect for a high-performing digital studio.
+Channel Profile: ${channelProfile}${intelContext}
 Episode Title: "${title}"
-${hookSummary ? `Existing Hook Idea: ${hookSummary}` : ''}
-${outline ? `Existing Outline: ${outline}` : ''}
+${hookSummary ? `Existing Hook/Concept: ${hookSummary}` : ''}
+${outline ? `Episode Outline: ${outline}` : ''}
 
-Write a complete, structured YouTube video draft script with:
-1. Hook (0:00 - 0:45 gripping opening retention hook that stops scrolling)
-2. 3 detailed narrative sections (Act I, Act II, Act III), each with a punchy heading and 2-3 engaging narration paragraphs with b-roll/visual cue notes in [brackets].
-3. CTA (Call to action outro with question prompt and subscribe tease)
+Generate a complete, production-ready, high-retention video draft script:
+1. "hook": 0:00-0:45 scrolling-stopping opening hook. Must begin with an auditory/visual pattern interrupt [SFX / Visual cue], pose an irresistible curiosity gap, raise the emotional stakes, and tease the climax without spoiling the resolution.
+2. "sections": Exactly 3 narrative acts:
+   - Act I (Origins, Context, and the Catalyst)
+   - Act II (Escalation, Conflict, and the Decisive Turning Point)
+   - Act III (Climax, Resolution, and Enduring Legacy)
+   Each section MUST have a punchy, evocative "heading" and 2-3 engaging narration paragraphs with embedded [Visual cue: ...] and [SFX: ...] directives for the editor.
+3. "cta": High-conversion outro with a community-debating question and subscribe prompt tailored specifically to this topic.
 
 Respond strictly in valid JSON format:
 {
@@ -127,7 +135,7 @@ Respond strictly in valid JSON format:
 // 2. Summarize Long Script
 app.post('/api/gemini/summarize-script', async (req, res) => {
   try {
-    const { scriptText, title } = req.body;
+    const { scriptText, title, channelId } = req.body;
     if (!scriptText) {
       return res.status(400).json({ error: 'Script text is required' });
     }
@@ -137,26 +145,29 @@ app.post('/api/gemini/summarize-script', async (req, res) => {
       return res.json({
         summary: `Executive summary for "${title || 'Episode'}": High-impact 3-act narrative with strong curiosity-driven retention hook, tight mid-video conflict escalation, and actionable viewer retention outro.`,
         retentionBeats: [
-          'Minute 0:30 hook cliffhanger before intro title card',
+          'Minute 0:30 hook cliffhanger before title card',
           'Minute 4:15 tactical pivot and rare archival evidence reveal',
           'Minute 9:00 climax resolution and philosophical legacy summary',
         ],
-        estimatedPacing: 'Target tempo: 145-160 WPM with dynamic visual b-roll every 4-6 seconds.',
+        estimatedPacing: 'Target tempo: 150-165 WPM with dynamic visual cut every 3.5-5.0 seconds.',
         isSimulated: true,
       });
     }
 
-    const prompt = `Analyze this YouTube production script for "${title || 'Episode'}":
+    const prompt = `You are a YouTube Executive Producer and retention consultant.
+Channel Context: ${channelId || 'Documentary Studio'}
+Episode Title: "${title || 'Episode'}"
+Full Script Content:
 """
 ${scriptText}
 """
 
-Provide an executive director summary including:
-1. "summary": A 2-3 sentence executive pitch of the episode's story arc.
-2. "retentionBeats": An array of 3 key retention cliffhangers/moments designed to keep audience watch time high.
-3. "estimatedPacing": A recommendation on voiceover pacing (WPM) and visual pacing.
+Provide a sharp, executive-level script critique and retention breakdown:
+1. "summary": A 2-3 sentence executive pitch summarizing the emotional story arc and core revelation.
+2. "retentionBeats": Exactly 3 timestamped retention peaks/cliffhangers (e.g., at 0:30, 4:00, and 8:30) engineered to prevent viewer drop-off.
+3. "estimatedPacing": Recommendation for narrator pace (WPM), voice tone, and visual edit cut frequency.
 
-Respond in JSON format:
+Respond strictly in valid JSON format:
 {
   "summary": "string",
   "retentionBeats": ["string", "string", "string"],
@@ -195,15 +206,15 @@ app.post('/api/gemini/score-thumbnails', async (req, res) => {
         score: index === 0 ? 9.2 : index === 1 ? 7.6 : 8.4,
         critique:
           index === 0
-            ? 'Exceptional curiosity gap and high mobile contrast. Focal point draws the eye immediately.'
+            ? 'Exceptional curiosity gap and high mobile contrast. Focal point draws the eye immediately at 200px browse scale.'
             : index === 1
-            ? 'Atmospheric color palette, but background details may blur at 200px mobile browse size.'
-            : 'Strong graphic clash that drives click intent; text hook balances the visual weight nicely.',
+            ? 'Atmospheric color palette, but background details risk turning muddy at mobile browse sizes.'
+            : 'Strong graphic clash that drives click intent; bold text hook balances the visual weight cleanly.',
       }));
       return res.json({ scores: defaultScores, isSimulated: true });
     }
 
-    const prompt = `You are a world-class YouTube CTR and thumbnail packaging specialist.
+    const prompt = `You are a YouTube packaging and thumbnail CTR specialist.
 Channel Niche: ${channelId}
 Episode Title: "${title}"
 Thumbnail Variants:
@@ -214,11 +225,11 @@ ${variants
   )
   .join('\n')}
 
-Evaluate each variant on YouTube mobile click-appeal on a scale of 1.0 to 10.0 (where 10.0 is an elite MrBeast/Vox level click magnet).
-Consider:
-- Immediate readability at 250px mobile width
-- Visual tension / curiosity gap
-- Brand relevance for ${channelId}
+Evaluate each variant on YouTube mobile click-appeal on a scale of 1.0 to 10.0 (where 10.0 is an elite top-1% viral thumbnail).
+Evaluate for:
+1. 250px mobile screen readability (clarity of focal subject against background)
+2. Curiosity gap (visual story without giving away the answer)
+3. Title complementarity (does the thumbnail hook avoid repeating the title words?)
 
 Respond strictly in valid JSON format:
 {

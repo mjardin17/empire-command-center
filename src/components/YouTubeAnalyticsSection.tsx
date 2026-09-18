@@ -281,17 +281,18 @@ export const YouTubeAnalyticsSection: React.FC<YouTubeAnalyticsSectionProps> = (
                 </div>
 
                 <div className="space-y-0.5">
-                  <span className="text-[11px] text-zinc-500 font-medium flex items-center gap-1">
-                    <TrendingUp className="w-3.5 h-3.5 text-emerald-400" /> 28-Day Est.
+                  <span className="text-[11px] text-zinc-500 font-medium flex items-center gap-1" title="YouTube Data API v3 provides public totals; rolling 28-day watch metrics require private YouTube Studio Analytics OAuth">
+                    <TrendingUp className="w-3.5 h-3.5 text-zinc-400" /> 28-Day Window
                   </span>
-                  <span className="text-sm font-bold text-emerald-400 font-mono block">
+                  <span className="text-xs font-semibold text-zinc-400 font-mono block">
                     {loading ? (
                       <span className="inline-block w-14 h-4 bg-zinc-800 animate-pulse rounded" />
-                    ) : channelStat ? (
-                      // YouTube channels endpoint provides total views; approximate 28-day based on current factory velocity
-                      `~${Math.round(channelStat.totalViews * 0.12).toLocaleString()} views`
+                    ) : channelStat?.last28DaysViews !== undefined ? (
+                      `${channelStat.last28DaysViews.toLocaleString()} views`
                     ) : (
-                      '—'
+                      <span className="text-zinc-500 text-[11px]" title="Private 28-day analytics requires authenticated Studio OAuth tokens">
+                        Studio OAuth Req.
+                      </span>
                     )}
                   </span>
                 </div>

@@ -271,6 +271,34 @@ export async function createEpisodeFromIntel(
     live: { isApproved: false },
   };
 
+  const defaultFullScript: FullScript = {
+    title: intel.title,
+    hook: intel.synopsis || `Did you know the untold story behind "${intel.title}" changed everything we understood? Let's decode what really happened.`,
+    sections: [
+      {
+        heading: 'Act I: Discovery & Context',
+        content: `[Visual: Archival maps and schematic overlay]\nThe research trail began with a single breakthrough: ${intel.synopsis}. Primary sources from ${intel.source} reveal how this changed everything we understood about the subject.`,
+      },
+      {
+        heading: 'Act II: The Hidden Turning Point',
+        content: `[Visual: Dynamic tactical breakdown, dramatic spotlight]\nWhen researchers probed deeper into the evidence, a startling contradiction surfaced. The conventional narrative completely ignored the critical events documented here.`,
+      },
+      {
+        heading: 'Act III: Climax & Modern Legacy',
+        content: `[Visual: High-contrast 4K comparison between past and present]\nToday, the reverberations of this discovery continue to challenge historians and creators alike. What began in the shadows has redefined the entire field.`,
+      },
+    ],
+    cta: `What is your take on ${intel.title}? Drop your thoughts in the comments below, subscribe to ${CHANNELS[intel.channelTarget]?.name || 'the channel'}, and tap the bell for next week's investigation!`,
+    summary: `High-impact investigation into "${intel.title}" exploring archival discoveries from ${intel.source} and the long-term historical reverberations.`,
+    retentionBeats: [
+      'Minute 0:30: The shocking revelation from the initial excavation/archive',
+      'Minute 4:15: Tactical breakdown and hidden structural anomaly reveal',
+      'Minute 8:45: Modern legacy comparison and philosophical outro question',
+    ],
+    estimatedPacing: 'Target tempo: 150-160 WPM with dynamic visual cut every 3.5-5.0 seconds.',
+    lastDraftedAt: new Date().toISOString(),
+  };
+
   const newEpisode: Episode = {
     id: `ep-${Date.now().toString().slice(-6)}`,
     channelId: intel.channelTarget,
@@ -278,16 +306,18 @@ export async function createEpisodeFromIntel(
     stage: 'ideas',
     gates: defaultGateObj,
     scriptStatus: {
-      wordCount: 0,
-      durationMinutes: 12,
+      wordCount: 850,
+      durationMinutes: 10,
       hookSummary: intel.synopsis,
-      outline: `1. Hook: ${intel.title}\n2. Deep Dive\n3. Climax & Synthesis\n4. Outro & Call To Action`,
+      outline: `1. Hook: ${intel.title}\n2. Deep Dive: Archival analysis from ${intel.source}\n3. Climax & Modern Synthesis\n4. Outro & Community Debate`,
       scriptReviewState: 'Drafting',
+      fullScript: defaultFullScript,
     },
+    fullScript: defaultFullScript,
     thumbnailVariants: [
       {
         id: 'var-1',
-        label: 'Variant A — Cinematic Main Subject Hero Shot',
+        label: 'Variant A — Dramatic Main Subject Hero Shot',
         concept: `High contrast subject with bold neon title text hook: "${intel.tags[0] || 'REVEALED'}"`,
         contrastScore: '93% High Contrast',
         predictedCtr: '8.7%',
@@ -297,7 +327,7 @@ export async function createEpisodeFromIntel(
       {
         id: 'var-2',
         label: 'Variant B — Dramatic Tension / Shock Factor',
-        concept: 'High saturation reaction or mystery artifact with yellow warning accents',
+        concept: `Mysterious focal artifact with high-saturation warning accents: "${intel.tags[1] || 'SHOCKING TRUTH'}"`,
         contrastScore: '86% Bold Contrast',
         predictedCtr: '7.9%',
         isSelected: false,
@@ -306,7 +336,7 @@ export async function createEpisodeFromIntel(
       {
         id: 'var-3',
         label: 'Variant C — Historical / Mechanical Blueprint',
-        concept: 'Detailed schematic lines overlaying high resolution rendered key art',
+        concept: `Detailed tactical schematics overlaying rendered key art: "${intel.tags[2] || 'CLASSIFIED BLUEPRINT'}"`,
         contrastScore: '82% Technical Clean',
         predictedCtr: '7.2%',
         isSelected: false,
@@ -452,7 +482,10 @@ export async function generateDraftScript(
   title: string,
   channelId: string,
   hookSummary?: string,
-  outline?: string
+  outline?: string,
+  sourceIntelTitle?: string,
+  sourceIntelName?: string,
+  tags?: string[]
 ): Promise<{
   hook: string;
   sections: { heading: string; content: string }[];
@@ -464,7 +497,15 @@ export async function generateDraftScript(
   const response = await fetch('/api/gemini/generate-script', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, channelId, hookSummary, outline }),
+    body: JSON.stringify({
+      title,
+      channelId,
+      hookSummary,
+      outline,
+      sourceIntelTitle,
+      sourceIntelName,
+      tags,
+    }),
   });
 
   if (!response.ok) {
@@ -477,7 +518,8 @@ export async function generateDraftScript(
 
 export async function summarizeScript(
   scriptText: string,
-  title?: string
+  title?: string,
+  channelId?: string
 ): Promise<{
   summary: string;
   retentionBeats: string[];
@@ -487,7 +529,7 @@ export async function summarizeScript(
   const response = await fetch('/api/gemini/summarize-script', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ scriptText, title }),
+    body: JSON.stringify({ scriptText, title, channelId }),
   });
 
   if (!response.ok) {
@@ -593,21 +635,21 @@ export const DEFAULT_REVENUE_CHANNELS: MonthlyRevenueChannel[] = [
     channelId: 'little_olympus',
     name: 'Little Olympus',
     monthlyTarget: 50000,
-    currentRevenue: 34200,
+    currentRevenue: 0,
     lastUpdated: new Date().toISOString(),
   },
   {
     channelId: 'iron_legends',
     name: 'Iron Legends',
     monthlyTarget: 35000,
-    currentRevenue: 21850,
+    currentRevenue: 0,
     lastUpdated: new Date().toISOString(),
   },
   {
     channelId: 'empire_decoded',
     name: 'Empire Decoded',
     monthlyTarget: 80000,
-    currentRevenue: 58600,
+    currentRevenue: 0,
     lastUpdated: new Date().toISOString(),
   },
 ];

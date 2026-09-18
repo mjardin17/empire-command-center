@@ -136,12 +136,12 @@ export default function App() {
   };
 
   // Move Episode Stage Handler with Gate Check
-  const handleMoveStage = async (episodeId: string, targetStage: StageId) => {
+  const handleMoveStage = async (episodeId: string, targetStage: StageId): Promise<boolean> => {
     try {
       const result = await moveEpisodeStage(episodeId, targetStage);
       if (!result.success) {
         addToast('warning', result.error || 'Cannot move episode.');
-        return;
+        return false;
       }
 
       if (result.episode) {
@@ -153,9 +153,11 @@ export default function App() {
         const targetTitle = STAGES.find((s) => s.id === targetStage)?.title;
         addToast('success', `Moved to ${targetTitle}: "${updated.title.slice(0, 30)}..."`);
       }
+      return true;
     } catch (err) {
       console.error(err);
       addToast('warning', 'Failed to change stage.');
+      return false;
     }
   };
 

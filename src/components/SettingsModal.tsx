@@ -65,16 +65,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     notifyApprovalNeeded('Go-Bots Lost Retrospective', 'Thumbnail Approval Gate');
   };
 
+  const [confirmReset, setConfirmReset] = useState(false);
+
   const handleFactoryResetClick = async () => {
-    if (
-      window.confirm(
-        'Reset Empire Command Center to factory defaults? This restores default episodes, gates, and seed intel.'
-      )
-    ) {
-      await resetToDefaults();
-      onResetFactoryData();
-      onClose();
+    if (!confirmReset) {
+      setConfirmReset(true);
+      return;
     }
+    await resetToDefaults();
+    onResetFactoryData();
+    onClose();
   };
 
   return (
@@ -211,14 +211,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               Restore the initial 3 multi-channel episodes and market intel leads.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={handleFactoryResetClick}
-            className="min-h-[36px] px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 border border-rose-500/20 flex items-center gap-1 transition-colors cursor-pointer shrink-0"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Reset Defaults</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {confirmReset && (
+              <button
+                type="button"
+                onClick={() => setConfirmReset(false)}
+                className="min-h-[36px] px-2.5 py-1.5 rounded-xl text-xs font-semibold text-zinc-400 hover:text-zinc-200"
+              >
+                Cancel
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleFactoryResetClick}
+              className={`min-h-[36px] px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer shrink-0 ${
+                confirmReset
+                  ? 'bg-rose-600 hover:bg-rose-500 text-white font-bold animate-pulse'
+                  : 'text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 border border-rose-500/20'
+              }`}
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>{confirmReset ? 'Are you sure? Click to reset' : 'Reset Defaults'}</span>
+            </button>
+          </div>
         </div>
 
         {/* Footer */}

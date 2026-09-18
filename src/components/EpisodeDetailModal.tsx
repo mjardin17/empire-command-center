@@ -52,7 +52,7 @@ interface EpisodeDetailModalProps {
   onSave: (updated: Episode) => void;
   onApproveGate: (episodeId: string, stage: StageId) => void;
   onRequestChanges: (episodeId: string, stage: StageId, notes?: string) => void;
-  onMoveStage: (episodeId: string, targetStage: StageId) => void;
+  onMoveStage: (episodeId: string, targetStage: StageId) => Promise<boolean> | boolean;
   onDelete: (episodeId: string) => void;
 }
 
@@ -111,10 +111,14 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
   );
   const [showRevisionForm, setShowRevisionForm] = useState(false);
 
-  // Gemini loading states
+  // Gemini loading & state
   const [isGeneratingScript, setIsGeneratingScript] = useState(false);
   const [isSummarizingScript, setIsSummarizingScript] = useState(false);
   const [isScoringThumbnails, setIsScoringThumbnails] = useState(false);
+  const [isRenderingSimulation, setIsRenderingSimulation] = useState(false);
+  const [hasCopiedScript, setHasCopiedScript] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
   const [scriptSummaryResult, setScriptSummaryResult] = useState<{
     summary: string;
     retentionBeats: string[];
@@ -230,12 +234,16 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
   // Gemini: Generate Draft Script
   const handleGenerateDraftScript = async () => {
     setIsGeneratingScript(true);
+    setModalError(null);
     try {
       const result = await generateDraftScript(
         formData.title,
         formData.channelId,
         formData.fullScript?.hook || formData.scriptStatus?.hookSummary,
-        formData.scriptStatus?.outline
+        formData.scriptStatus?.outline,
+        formData.sourceIntelTitle,
+        formData.sourceIntelName,
+        (formData as any).tags
       );
 
       const updatedScript: FullScript = {
@@ -261,7 +269,7 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
       onSave(updated);
       showToast('Draft script generated successfully with Gemini!');
     } catch (err: any) {
-      alert(`Script Generation Error: ${err.message}`);
+      setModalError(`Script Generation Failed: ${err.message || 'Gemini service unreachable'}`);
     } finally {
       setIsGeneratingScript(false);
     }
@@ -270,6 +278,7 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
   // Gemini: Summarize Script
   const handleSummarizeScript = async () => {
     setIsSummarizingScript(true);
+    setModalError(null);
     try {
       const scriptParts = [
         `HOOK: ${formData.fullScript?.hook || ''}`,
@@ -279,19 +288,51 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
         `CTA: ${formData.fullScript?.cta || ''}`,
       ].join('\n\n');
 
-      const result = await summarizeScript(scriptParts, formData.title);
+      const result = await summarizeScript(scriptParts, formData.title, formData.channelId);
       setScriptSummaryResult(result);
       showToast('Executive script summary ready!');
     } catch (err: any) {
-      alert(`Summarization Error: ${err.message}`);
+      setModalError(`Script Summarization Failed: ${err.message || 'Gemini service unreachable'}`);
     } finally {
       setIsSummarizingScript(false);
+    }
+  };
+
+  // Copy Full Script to Clipboard
+  const handleCopyScript = async () => {
+    const fullText = [
+      `TITLE: ${formData.title}`,
+      `CHANNEL: ${CHANNELS[formData.channelId]?.name || formData.channelId}`,
+      `DATE: ${formData.fullScript?.lastDraftedAt || formatTimestamp()}`,
+      '',
+      '=== HOOK ===',
+      formData.fullScript?.hook || '',
+      '',
+      '=== MAIN CONTENT ===',
+      ...(formData.fullScript?.sections || []).map(
+        (s) => `\n## ${s.heading}\n${s.content}`
+      ),
+      '',
+      '=== CALL TO ACTION ===',
+      formData.fullScript?.cta || '',
+    ].join('\n');
+
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(fullText);
+      }
+      setHasCopiedScript(true);
+      showToast('Full script copied to clipboard!');
+      setTimeout(() => setHasCopiedScript(false), 2500);
+    } catch (err) {
+      showToast('Script ready (clipboard permission blocked)');
     }
   };
 
   // Thumbnail: Score Variants with Gemini (1-10)
   const handleScoreThumbnailVariants = async () => {
     setIsScoringThumbnails(true);
+    setModalError(null);
     try {
       const result = await scoreThumbnailVariants(
         formData.title,
@@ -320,7 +361,7 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
       onSave(updated);
       showToast('Thumbnail variants scored 1–10 with Gemini!');
     } catch (err: any) {
-      alert(`Scoring Error: ${err.message}`);
+      setModalError(`Thumbnail Scoring Failed: ${err.message || 'Gemini service unreachable'}`);
     } finally {
       setIsScoringThumbnails(false);
     }
@@ -374,6 +415,56 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
 
     setFormData(updated);
     onSave(updated);
+  };
+
+  // Check or uncheck all syndication targets
+  const handleToggleAllPublish = (checkAll: boolean) => {
+    const timestamp = checkAll ? formatTimestamp() : undefined;
+    const updatedChecklist: PublishChecklist = {
+      youtube: checkAll,
+      instagram: checkAll,
+      facebook: checkAll,
+      x: checkAll,
+      linkedin: checkAll,
+    };
+    const updatedTimestamps: Record<string, string | undefined> = {
+      youtube: timestamp,
+      instagram: timestamp,
+      facebook: timestamp,
+      x: timestamp,
+      linkedin: timestamp,
+    };
+
+    const updated = {
+      ...formData,
+      publishChecklist: updatedChecklist,
+      publishChecklistTimestamps: updatedTimestamps as any,
+    };
+    setFormData(updated);
+    onSave(updated);
+    showToast(checkAll ? 'All distribution channels checked ready!' : 'All checklists cleared.');
+  };
+
+  // Simulate automated 4K rendering queue
+  const handleStartRenderQueue = () => {
+    if (isRenderingSimulation) return;
+    setIsRenderingSimulation(true);
+
+    let progress = Math.max(10, formData.renderStatus.progress);
+    handleSetRenderProgress(progress);
+
+    const interval = setInterval(() => {
+      progress += Math.floor(Math.random() * 20) + 15;
+      if (progress >= 100) {
+        progress = 100;
+        clearInterval(interval);
+        setIsRenderingSimulation(false);
+        handleSetRenderProgress(100);
+        showToast('4K Render export complete and color graded!');
+      } else {
+        handleSetRenderProgress(progress);
+      }
+    }, 450);
   };
 
   const handleSetRenderProgress = (progress: number) => {
@@ -480,6 +571,23 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
           </div>
         )}
 
+        {/* MODAL ERROR BANNER */}
+        {modalError && (
+          <div className="mx-4 mt-4 p-3.5 rounded-xl bg-rose-950/80 border border-rose-500/50 flex items-center justify-between gap-3 text-xs text-rose-200">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>{modalError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setModalError(null)}
+              className="text-rose-400 hover:text-rose-200 text-xs font-semibold px-2 py-1 rounded bg-rose-900/50 cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
         {/* TOP HEADER */}
         <div className="p-4 sm:p-5 bg-zinc-950/90 border-b border-zinc-800 flex items-start justify-between gap-4">
           <div className="space-y-2 flex-1">
@@ -557,10 +665,12 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
                 <React.Fragment key={s.id}>
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
                       if (s.id !== formData.stage) {
-                        onMoveStage(formData.id, s.id);
-                        setFormData((prev) => ({ ...prev, stage: s.id }));
+                        const success = await onMoveStage(formData.id, s.id);
+                        if (success) {
+                          setFormData((prev) => ({ ...prev, stage: s.id }));
+                        }
                       }
                     }}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
@@ -835,8 +945,22 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
                   </p>
                 </div>
 
-                {/* Gemini AI Action Buttons */}
+                {/* Gemini AI Action Buttons & Copy */}
                 <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCopyScript}
+                    className="min-h-[40px] px-3 py-2 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 flex items-center gap-1.5 transition-colors cursor-pointer"
+                    title="Copy full script hook, acts, and CTA to clipboard"
+                  >
+                    {hasCopiedScript ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <Share2 className="w-3.5 h-3.5 text-zinc-400" />
+                    )}
+                    <span>{hasCopiedScript ? 'Copied!' : 'Copy Script'}</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={handleGenerateDraftScript}
@@ -1220,24 +1344,26 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
                 <div className="flex flex-wrap items-center gap-2 pt-2">
                   <button
                     type="button"
-                    onClick={() => handleSetRenderProgress(0)}
-                    className="min-h-[40px] px-3 py-1.5 rounded-lg text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 cursor-pointer"
+                    onClick={handleStartRenderQueue}
+                    disabled={isRenderingSimulation || formData.renderStatus.progress === 100}
+                    className="min-h-[40px] px-3.5 py-1.5 rounded-lg text-xs font-bold bg-cyan-600 hover:bg-cyan-500 text-white cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
                   >
-                    Reset (0%)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSetRenderProgress(50)}
-                    className="min-h-[40px] px-3 py-1.5 rounded-lg text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-cyan-300 cursor-pointer"
-                  >
-                    Simulate 50%
+                    <Play className={`w-3.5 h-3.5 ${isRenderingSimulation ? 'animate-spin' : ''}`} />
+                    <span>{isRenderingSimulation ? 'Rendering 4K Queue...' : 'Run 4K Export Pipeline'}</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => handleSetRenderProgress(100)}
-                    className="min-h-[40px] px-3.5 py-1.5 rounded-lg text-xs font-bold bg-cyan-600 hover:bg-cyan-500 text-white cursor-pointer"
+                    className="min-h-[40px] px-3 py-1.5 rounded-lg text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-cyan-300 border border-zinc-700 cursor-pointer"
                   >
-                    Mark 100% Complete
+                    Instant 100%
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSetRenderProgress(0)}
+                    className="min-h-[40px] px-3 py-1.5 rounded-lg text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-400 cursor-pointer"
+                  >
+                    Reset (0%)
                   </button>
                 </div>
               </div>
@@ -1247,7 +1373,7 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
           {/* TAB 5: PUBLISH CHECKLIST */}
           {activeTab === 'publish' && (
             <div className="space-y-5">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h3 className="text-sm font-bold text-zinc-100 flex items-center gap-2">
                     <Share2 className="w-4 h-4 text-emerald-400" />
@@ -1257,9 +1383,25 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
                     YouTube check is mandatory before this episode can move to Live
                   </p>
                 </div>
-                <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/25">
-                  {completedChecklistCount} / 5 Ready
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleToggleAllPublish(true)}
+                    className="min-h-[36px] px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors cursor-pointer"
+                  >
+                    Check All Done
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleAllPublish(false)}
+                    className="min-h-[36px] px-2 py-1 rounded-lg text-xs font-semibold text-zinc-400 hover:text-zinc-200"
+                  >
+                    Clear
+                  </button>
+                  <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/25">
+                    {completedChecklistCount} / 5 Ready
+                  </span>
+                </div>
               </div>
 
               {/* YouTube Mandatory Warning if unchecked */}
@@ -1370,19 +1512,36 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
 
         {/* BOTTOM ACTION BAR */}
         <div className="p-4 bg-zinc-950/90 border-t border-zinc-800 flex flex-wrap items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={() => {
-              if (window.confirm('Delete this episode from the production factory?')) {
+          <div className="flex items-center gap-2">
+            {confirmDelete && (
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(false)}
+                className="min-h-[44px] px-3 py-2 rounded-xl text-xs font-semibold text-zinc-400 hover:text-zinc-200"
+              >
+                Cancel
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (!confirmDelete) {
+                  setConfirmDelete(true);
+                  return;
+                }
                 onDelete(formData.id);
                 onClose();
-              }
-            }}
-            className="min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-semibold text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 border border-rose-500/20 flex items-center gap-1.5 transition-colors cursor-pointer"
-          >
-            <Trash2 className="w-4 h-4" />
-            <span>Delete Episode</span>
-          </button>
+              }}
+              className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                confirmDelete
+                  ? 'bg-rose-600 hover:bg-rose-500 text-white font-bold animate-pulse'
+                  : 'text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 border border-rose-500/20'
+              }`}
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>{confirmDelete ? 'Click to Confirm Delete' : 'Delete Episode'}</span>
+            </button>
+          </div>
 
           <div className="flex items-center gap-2">
             <button
@@ -1397,19 +1556,28 @@ export const EpisodeDetailModal: React.FC<EpisodeDetailModalProps> = ({
             {nextStage && (
               <button
                 type="button"
-                onClick={() => {
-                  onMoveStage(formData.id, nextStage.id);
-                  onClose();
+                onClick={async () => {
+                  const success = await onMoveStage(formData.id, nextStage.id);
+                  if (success) {
+                    onClose();
+                  }
                 }}
                 disabled={
                   (isGated && !isGateApproved) ||
                   (nextStage.id === 'live' && !formData.publishChecklist?.youtube)
                 }
+                title={
+                  isGated && !isGateApproved
+                    ? `${currentStageInfo?.title || 'Stage'} gate must be approved before advancing`
+                    : nextStage.id === 'live' && !formData.publishChecklist?.youtube
+                    ? 'YouTube Primary Release must be checked in the Publish checklist before going Live'
+                    : `Advance to ${nextStage.title}`
+                }
                 className={`min-h-[44px] px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 shadow-lg transition-all cursor-pointer ${
                   (isGated && !isGateApproved) ||
                   (nextStage.id === 'live' && !formData.publishChecklist?.youtube)
                     ? 'bg-zinc-800/80 text-zinc-500 border border-zinc-800 cursor-not-allowed'
-                    : 'bg-amber-500 hover:bg-amber-400 text-zinc-950 shadow-amber-500/20'
+                    : 'bg-amber-500 hover:bg-amber-400 text-zinc-950 shadow-amber-500/20 active:scale-95'
                 }`}
               >
                 <span>Advance to {nextStage.title}</span>

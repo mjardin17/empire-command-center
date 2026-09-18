@@ -160,9 +160,14 @@ export const RevenueSection: React.FC = () => {
           <div className="w-full h-3.5 bg-zinc-950 rounded-full overflow-hidden border border-zinc-800 p-0.5">
             <div
               className="h-full bg-gradient-to-r from-amber-600 via-amber-400 to-emerald-400 rounded-full transition-all duration-500"
-              style={{ width: `${Math.min(100, totalPercentage)}%` }}
+              style={{ width: `${Math.min(100, Math.max(totalCurrent > 0 ? 2 : 0, totalPercentage))}%` }}
             />
           </div>
+          {totalCurrent === 0 && (
+            <p className="text-[11px] text-zinc-500 italic">
+              No revenue logged yet this cycle. Empty states remain honest—click &ldquo;Log Payment / AdSense&rdquo; above to record verified payouts.
+            </p>
+          )}
         </div>
       </div>
 
